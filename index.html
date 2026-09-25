@@ -36,7 +36,7 @@
       right: 16px;
       left: 16px;
       z-index: 1000;
-      background: rgba(15, 23, 42, 0.85);
+      background: rgba(15, 23, 42, 0.88);
       backdrop-filter: blur(10px);
       border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 14px;
@@ -75,10 +75,11 @@
       border-radius: 8px;
       padding: 6px 12px;
       text-align: center;
+      min-width: 80px;
     }
 
     .stat-badge .num {
-      font-size: 1rem;
+      font-size: 1.05rem;
       font-weight: bold;
       color: #38bdf8;
       display: block;
@@ -95,13 +96,13 @@
       bottom: 24px;
       left: 20px;
       z-index: 1000;
-      background: rgba(15, 23, 42, 0.85);
+      background: rgba(15, 23, 42, 0.88);
       backdrop-filter: blur(10px);
       border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 12px;
       padding: 14px;
       color: #f1f5f9;
-      width: 210px;
+      width: 220px;
       box-shadow: 0 8px 30px rgba(0,0,0,0.5);
     }
 
@@ -134,16 +135,16 @@
       top: 90px;
       right: 16px;
       z-index: 1000;
-      background: rgba(15, 23, 42, 0.85);
+      background: rgba(15, 23, 42, 0.88);
       backdrop-filter: blur(10px);
       border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 10px;
-      padding: 8px 12px;
+      padding: 10px 14px;
       color: #f8fafc;
       font-size: 0.8rem;
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 8px;
     }
 
     .view-control label {
@@ -180,14 +181,13 @@
       direction: ltr;
     }
     
-    /* لودر وضعیت */
     #loading-indicator {
       position: absolute;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
       z-index: 2000;
-      background: rgba(15, 23, 42, 0.9);
+      background: rgba(15, 23, 42, 0.92);
       padding: 16px 28px;
       border-radius: 12px;
       color: #38bdf8;
@@ -201,13 +201,12 @@
 </head>
 <body>
 
-  <div id="loading-indicator">در حال فراخوانی داده‌های FWI استان فارس...</div>
+  <div id="loading-indicator">در حال بارگذاری داده‌های خطر آتش‌سوزی...</div>
 
-  <!-- هدر بالا -->
   <div class="dashboard-header">
     <div class="title-box">
-      <h1>🔥 پیش‌بینی شاخص خطر آتش‌سوزی مراتع و جنگل‌ها (FWI)</h1>
-      <p id="sub-title">منطقه: استان فارس | مبنای پیش‌بینی: داده‌های ماهواره‌ای GWIS/Copernicus</p>
+      <h1>🔥 سامانه پایش شاخص خطر آتش‌سوزی (FWI) استان فارس</h1>
+      <p id="sub-title">داده‌های ماهواره‌ای و محاسباتی سامانه جهانی GWIS / Copernicus</p>
     </div>
     <div class="stats-box">
       <div class="stat-badge">
@@ -220,24 +219,22 @@
       </div>
       <div class="stat-badge">
         <span class="num" id="stat-points">--</span>
-        <span class="lbl">تعداد نقاط پایش</span>
+        <span class="lbl">نقاط پایش</span>
       </div>
     </div>
   </div>
 
-  <!-- سوییچ لایه‌ها -->
   <div class="view-control">
     <label>
-      <input type="checkbox" id="toggle-points" checked>
-      نمایش شبکه نقاط محاسباتی
+      <input type="checkbox" id="toggle-heat" checked>
+      نمایش لایه پهنه‌ای (هیت‌مپ)
     </label>
     <label>
-      <input type="checkbox" id="toggle-heat" checked>
-      نمایش پهنه‌ای پیوسته (هیت‌مپ)
+      <input type="checkbox" id="toggle-points" checked>
+      نمایش نقاط محاسباتی
     </label>
   </div>
 
-  <!-- راهنمای رنگ‌ها -->
   <div class="legend-card">
     <div class="legend-title">طبقات خطر شاخص FWI</div>
     <div class="legend-row"><span class="legend-color" style="background:#004d00;"></span>بسیار کم (0 - 5.2)</div>
@@ -250,19 +247,18 @@
 
   <div id="map"></div>
 
-  <!-- Leaflet JS & Leaflet-Heat JS -->
+  <!-- اسکریپت‌های Leaflet -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 
   <script>
-    // تنظیم رنگ بر اساس استانداردهای GWIS FWI
     function getFwiColor(val) {
-      if (val >= 50.0) return "#7f0000"; // بحرانی
-      if (val >= 38.0) return "#d7191c"; // بسیار زیاد
-      if (val >= 21.3) return "#fdae61"; // زیاد
-      if (val >= 11.2) return "#ffffbf"; // متوسط
-      if (val >= 5.2)  return "#2b83ba"; // کم
-      return "#004d00";                  // خیلی کم
+      if (val >= 50.0) return "#7f0000";
+      if (val >= 38.0) return "#d7191c";
+      if (val >= 21.3) return "#fdae61";
+      if (val >= 11.2) return "#ffffbf";
+      if (val >= 5.2)  return "#2b83ba";
+      return "#004d00";
     }
 
     function getFwiRiskLevel(val) {
@@ -274,9 +270,8 @@
       return "بسیار کم";
     }
 
-    // مقداردهی اولیه نقشه با محوریت استان فارس
     const map = L.map('map', {
-      center: [29.1, 53.2],
+      center: [29.15, 53.15],
       zoom: 7,
       minZoom: 6,
       zoomControl: false
@@ -284,64 +279,76 @@
 
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-    // پس‌زمینه نقشه تاریک و باکیفیت کارتو (CartoDB DarkMatter)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; CartoDB &copy; OpenStreetMap',
-      subdomains: 'abcd',
-      maxZoom: 19
+    // نقشه پایه عمومی و باکیفیت OpenStreetMap بدون نیاز به API Key
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+      maxZoom: 18
     }).addTo(map);
 
     let pointsLayer = L.layerGroup().addTo(map);
     let heatLayer = null;
 
-    // بارگذاری فایل داده
     async function loadData() {
       const loader = document.getElementById('loading-indicator');
       try {
-        // خواندن داده‌های تولید شده در data/fwi_fars.json
         const response = await fetch('data/fwi_fars.json?v=' + Date.now());
         if (!response.ok) {
-          throw new Error('فایل data/fwi_fars.json یافت نشد یا در دسترس نیست.');
+          throw new Error('فایل داده یافت نشد (کد: ' + response.status + ')');
         }
 
-        const data = await response.json();
-        const features = data.features || [];
+        const rawData = await response.json();
+        const features = rawData.features || (Array.isArray(rawData) ? rawData : []);
+
+        if (features.length === 0) {
+          throw new Error('هیچ نقطه‌ای در فایل داده یافت نشد.');
+        }
 
         let maxFwi = 0;
         const heatPoints = [];
 
         features.forEach(f => {
-          const coords = f.geometry.coordinates; // [lon, lat]
-          const props = f.properties || {};
-          const fwi = props.FWI !== null ? parseFloat(props.FWI) : 0;
+          let lon = 0, lat = 0;
+          if (f.geometry && f.geometry.coordinates) {
+            lon = f.geometry.coordinates[0];
+            lat = f.geometry.coordinates[1];
+          } else if (f.lat !== undefined && f.lon !== undefined) {
+            lat = f.lat;
+            lon = f.lon;
+          }
+
+          const props = f.properties || f;
+          const fwi = parseFloat(props.FWI ?? props.fwi ?? 0);
+          const isi = props.ISI ?? props.isi ?? null;
+          const bui = props.BUI ?? props.bui ?? null;
+          const ffmc = props.FFMC ?? props.ffmc ?? null;
+
           if (fwi > maxFwi) maxFwi = fwi;
 
-          // وزن‌دهی برای لایه پیوسته Heatmap (نرمال‌سازی بین 0 تا 1)
-          const weight = Math.min(1.0, Math.max(0.1, fwi / 60.0));
-          heatPoints.push([coords[1], coords[0], weight]);
+          // وزن هیت‌مپ
+          const intensity = Math.min(1.0, Math.max(0.1, fwi / 60.0));
+          heatPoints.push([lat, lon, intensity]);
 
-          // ایجاد مارکر دایره‌ای روی گرید
-          const circle = L.circleMarker([coords[1], coords[0]], {
-            radius: 4,
+          // نقطه روی نقشه
+          const circle = L.circleMarker([lat, lon], {
+            radius: 3.5,
             fillColor: getFwiColor(fwi),
-            color: '#000',
-            weight: 0.4,
-            opacity: 0.8,
+            color: '#1e293b',
+            weight: 0.5,
+            opacity: 0.9,
             fillOpacity: 0.85
           });
 
-          // پاپ‌آپ هنگام کلیک روی هر نقطه
           circle.bindPopup(`
-            <div style="direction: rtl; text-align: right;">
-              <h4 style="margin: 0 0 6px; color: #38bdf8;">نقطه دیدبانی مدل</h4>
+            <div style="direction: rtl; text-align: right; min-width: 170px;">
+              <h4 style="margin: 0 0 6px; color: #38bdf8;">نقطه دیدبانی استان فارس</h4>
               <p style="font-size:0.75rem; margin:0 0 6px; color:#94a3b8;">
-                مختصات: ${coords[1].toFixed(3)}°N , ${coords[0].toFixed(3)}°E
+                مختصات: ${lat.toFixed(3)}°N , ${lon.toFixed(3)}°E
               </p>
               <table class="popup-table">
                 <tr><td>شاخص FWI:</td><td style="color:${getFwiColor(fwi)};">${fwi.toFixed(1)} (${getFwiRiskLevel(fwi)})</td></tr>
-                <tr><td>شاخص گسترش (ISI):</td><td>${props.ISI ? props.ISI.toFixed(1) : '--'}</td></tr>
-                <tr><td>تجمع سوخت (BUI):</td><td>${props.BUI ? props.BUI.toFixed(1) : '--'}</td></tr>
-                <tr><td>رطوبت سوخت (FFMC):</td><td>${props.FFMC ? props.FFMC.toFixed(1) : '--'}</td></tr>
+                <tr><td>شاخص گسترش (ISI):</td><td>${isi !== null ? Number(isi).toFixed(1) : '--'}</td></tr>
+                <tr><td>تجمع سوخت (BUI):</td><td>${bui !== null ? Number(bui).toFixed(1) : '--'}</td></tr>
+                <tr><td>رطوبت سوخت (FFMC):</td><td>${ffmc !== null ? Number(ffmc).toFixed(1) : '--'}</td></tr>
               </table>
             </div>
           `);
@@ -349,10 +356,10 @@
           pointsLayer.addLayer(circle);
         });
 
-        // ایجاد لایه هیت‌مپ پیوسته
+        // لایه هیت‌مپ
         heatLayer = L.heatLayer(heatPoints, {
-          radius: 18,
-          blur: 15,
+          radius: 20,
+          blur: 16,
           maxZoom: 10,
           max: 1.0,
           gradient: {
@@ -365,11 +372,12 @@
           }
         }).addTo(map);
 
-        // به‌روزرسانی آمارهای هدر
+        // بروزرسانی آمارها
         document.getElementById('stat-points').innerText = features.length.toLocaleString('fa-IR');
         document.getElementById('stat-max').innerText = maxFwi.toFixed(1);
-        if (data.metadata && data.metadata.forecast_date) {
-          document.getElementById('stat-date').innerText = data.metadata.forecast_date;
+        
+        if (rawData.metadata && (rawData.metadata.forecast_date || rawData.metadata.forecast_date_shamsi)) {
+          document.getElementById('stat-date').innerText = rawData.metadata.forecast_date_shamsi || rawData.metadata.forecast_date;
         } else {
           document.getElementById('stat-date').innerText = "امروز";
         }
@@ -378,28 +386,21 @@
 
       } catch (err) {
         console.error(err);
-        loader.innerText = 'خطا در بارگذاری داده‌ها: ' + err.message;
+        loader.innerText = 'خطا در بارگذاری: ' + err.message;
         loader.style.borderColor = '#ef4444';
         loader.style.color = '#ef4444';
       }
     }
 
-    // کنترل تیک‌های نمایش لایه‌ها
     document.getElementById('toggle-points').addEventListener('change', function(e) {
-      if (e.target.checked) {
-        map.addLayer(pointsLayer);
-      } else {
-        map.removeLayer(pointsLayer);
-      }
+      if (e.target.checked) map.addLayer(pointsLayer);
+      else map.removeLayer(pointsLayer);
     });
 
     document.getElementById('toggle-heat').addEventListener('change', function(e) {
       if (heatLayer) {
-        if (e.target.checked) {
-          map.addLayer(heatLayer);
-        } else {
-          map.removeLayer(heatLayer);
-        }
+        if (e.target.checked) map.addLayer(heatLayer);
+        else map.removeLayer(heatLayer);
       }
     });
 
