@@ -1,0 +1,228 @@
+name: Update FWI Fars
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 1 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  update-fwi:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+ دانلود، پر کردن خلاءها (IDW) و اجرا
+
+1. روی **Add file** ⬅️ **Create new file** بزنید.
+2. در کادر نام فایل دقیقاً بنویسید:
+   `.github/workflows/update_fwi.yml`
+3. کد زیر را عیناً داخل آن کپی و سپس ذخیره (Commit) کنید:
+```yaml
+name: Update FWI Fars
+
+on:
+  workflow_dispatch:
+  schedule:
+- cron: "30 1 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  update-fwi:
+runs-on: ubuntu-latest
+
+steps:
+- name: Checkout repository
+uses: actions/checkout@v4
+
+- name: Setup Python
+uses: actions/setup-python@v5
+with:
+python-version: "3.11"
+
+- name: Install dependencies
+run: |
+python -m pip install --upgrade pip
+python -m pip install requests beautifulsoup4 geopandas shapely pandas xlsxwriter scipy numpy
+
+- name: Fetch and Interpolate FWI
+run: |
+mkdir -p data
+cat > request_fwi.py <<'PY'
+import json
+import math
+import requests
+import numpy as np
+import geopandas as gpd
+from scipy.spatial import cKDTree
+from bs4 import BeautifulSoup
+from shapely.geometry import Point
+from datetime import datetime, timedelta, timezone
+
+WMS_URL = "https://maps.effis.emergency.copernicus.eu/gwis"
+LAYER = "ecmwf.query"
+QUERY_LAYER = "ecmwf.query"
+BBOX = [50.0, 27.0, 55.0, 32.0]
+GRID_STEP = 0.05
+POINT_WIDTH = 101
+POINT_HEIGHT = 101
+HALF_SIZE_METERS = 12000
+OUTPUT_FILE = "data/fwi_fars.json"
+
+day_no = 365 * gy2 + (gy2 + 3) // 4 - (gy2 + 99) // 100 + (gy2 + 399) // 400
+for i in range(gm2):
+g_day_no += g_days[i]
+g_day_no += gd2
+j_day_no = g_day_no - 79
+j_np = j_day_no // 12053
+j_day_no %= 12053
+jy = 979 + 33 * j_np + 4 * (j_day_no // 1461)
+j_day_no %= 1461
+if j_day_no >= 366:
+jy += (j_day_no - 1) // 365
+j_day_no = (j_day_no - 1) % 365
+if j_day_no < 186:
+jm = 1 + j_day_no // 31
+jd = 1 + j_day_no % 31
+else:
+jm = 7 + (j_day_no - 186) // 30
+jd = 1 + (j_day_no - 186) % 30
+return jy, jm, jd
+
+jy, jm, jd = gregorian_to_jalali(target.year, target.month, target.day)
+shamsi_date = f"{jy:04d}-{jm:02d}-{jd:02d}"
+
+def lonlat_to_3857(lon, lat):
+x = lon * 20037508.34 / 180.0
+y = math.log(math.tan(math.radians(lat) / 2.0 + math.pi / 4.0)) * 20037508.34 / math.pi
+return x, y
+
+def parse_fwi(html):
+soup = BeautifulSoup(html, "html.parser")
+for row in soup.find_all("tr"):
+cells = row.find_all("td")
+if len(cells) < 2:
+continue
+label = cells[0].get_text(" ", strip=True).lower()
+value_text = cells[1].get_text(" ", strip=True)
+if "fire weather index" not in label:
+continue
+try:
+val = float(value_text)
+if math.isfinite(val) and 0 <= val <= 200:
+return round(val, 3)
+except ValueError:
+continue
+return None
+
+session = GAPGPTMASKTOKENkybkh04g91X0X
+session.headers.update({"User-Agent": "FARS-FWI/1.0"})
+
+def get_fwi(lon, lat):
+x, y = lonlat_to_3857(lon, lat)
+bbox = f"{x - HALF_SIZE_METERS},{y - HALF_SIZE_METERS},{x + HALF_SIZE_METERS},{y + HALF_SIZE_METERS}"
+params = {
+"SERVICE": "WMS", "VERSION": "1.1.1", "REQUEST": "GetFeatureInfo",
+"LAYERS": LAYER, "QUERY_LAYERS": QUERY_LAYER, "SRS": "EPSG:3857",
+"BBOX": bbox, "WIDTH": str(POINT_WIDTH), "HEIGHT": str(POINT_HEIGHT),
+"X": "50", "Y": "50", "INFO_FORMAT": "text/html", "FEATURE_COUNT": "1",
+"FORMAT": "image/png", "TRANSPARENT": "TRUE", "TIME": target_date
+}
+try:
+res = session.get(WMS_URL, params=params, timeout=30)
+return parse_fwi(res.text) if res.status_code == 200 else None
+except Exception:
+return None
+
+fars = gpd.read_file("fars.geojson")
+if fars.crs is None:
+fars = fars.set_crs("EPSG:4326")
+else:
+fars = fars.to_crs("EPSG:4326")
+
+try:
+geometry = fars.geometry.union_all()
+except AttributeError:
+geometry = fars.geometry.unary_union
+
+points = []
+lat = BBOX[1]
+while lat <= BBOX[3] + 1e-6:
+lon = BBOX[0]
+while lon <= BBOX[2] + 1e-6:
+p = Point(lon, lat)
+if geometry.covers(p):
+points.append((round(lon, 5), round(lat, 5)))
+lon += GRID_STEP
+lat += GRID_STEP
+
+known_coords, known_values, missing_points = [], [], []
+total = len(points)
+for idx, (lon, lat) in enumerate(points, 1):
+val = get_fwi(lon, lat)
+if val is not None:
+known_coords.append((lon, lat))
+known_values.append(val)
+else:
+missing_points.append((lon, lat))
+
+if not known_values:
+raise RuntimeError("No numeric FWI values returned from EFFIS server.")
+
+results = [{"lat": lat, "lon": lon, "fwi": val, "interpolated": False}
+for (lon, lat), val in zip(known_coords, known_values)]
+
+if missing_points:
+tree = cKDTree(known_coords)
+k = min(8, len(known_coords))
+dists, idxs = tree.query(missing_points, k=k)
+if k == 1:
+dists, idxs = dists[:, None], idxs[:, None]
+weights = 1.0 / np.maximum(dists, 1e-12)**2.0
+weights /= weights.sum(axis=1, keepdims=True)
+interp_vals = np.sum(weights * np.array(known_values)[idxs], axis=1)
+for (lon, lat), val in zip(missing_points, interp_vals):
+results.append({"lat": lat, "lon": lon, "fwi": round(float(val), 3), "interpolated": True})
+
+def risk_class(v):
+if v < 11.2: return "Low"
+if v < 21.3: return "Moderate"
+if v < 38: return "High"
+if v < 50: return "Very High"
+if v <= 70: return "Extreme"
+return "Very Extreme"
+
+for p in results:
+p["risk_class"] = risk_class(p["fwi"])
+
+vals = [p["fwi"] for p in results]
+output = {
+"forecast_gregorian": target_date,
+"forecast_shamsi": shamsi_date,
+"generated_at_iran": now.strftime("%Y-%m-%d %H:%M"),
+"statistics": {"min": round(min(vals), 3), "max": round(max(vals), 3), "mean": round(sum(vals)/len(vals), 3), "count": len(results)},
+"points": results
+}
+with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+json.dump(output, f, ensure_ascii=False, indent=2)
+PY
+python request_fwi.py
+
+- name: Save generated data
+run: |
+git config user.name "github-actions[bot]"
+git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+git add data/fwi_fars.json
+if git diff --cached --quiet; then
+echo "No changes"
+else
+git commit -m "Update FWI data with IDW gap-fill"
+git push
+fi
