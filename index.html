@@ -91,7 +91,7 @@
       color: #cbd5e1;
     }
 
-    /* پنل کنترل لایه‌ها */
+    /* پنل مدیریت لایه‌ها */
     .layer-control-card {
       position: absolute;
       top: 85px;
@@ -107,7 +107,7 @@
       display: flex;
       flex-direction: column;
       gap: 8px;
-      min-width: 220px;
+      min-width: 230px;
       box-shadow: 0 6px 20px rgba(0,0,0,0.4);
     }
 
@@ -125,6 +125,7 @@
       display: flex;
       align-items: center;
       gap: 8px;
+      user-select: none;
     }
 
     .badge-count {
@@ -176,7 +177,7 @@
       margin-left: 8px;
     }
 
-    /* لودر */
+    /* پیام در حال بارگذاری */
     #loading-indicator {
       position: absolute;
       top: 50%;
@@ -189,9 +190,9 @@
       color: #38bdf8;
       font-size: 0.88rem;
       border: 1px solid #38bdf8;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.6);
     }
 
-    /* پاپ‌آپ */
     .leaflet-popup-content-wrapper {
       background: #1e293b !important;
       color: #fff !important;
@@ -205,7 +206,7 @@
 </head>
 <body>
 
-  <div id="loading-indicator">در حال دریافت داده‌های ۴,۲۹۷ نقطه پایش استان فارس...</div>
+  <div id="loading-indicator">در حال بارگذاری اطلاعات شاخص FWI استان فارس...</div>
 
   <div class="dashboard-header">
     <div class="title-box">
@@ -241,13 +242,13 @@
       <span class="badge-count" id="count-direct">۰</span>
     </label>
     <label>
-      <input type="checkbox" id="toggle-interp" checked>
+      <input type="checkbox" id="toggle-interp">
       <span>نقاط درون‌یابی‌شده (IDW)</span>
       <span class="badge-count" id="count-interp">۰</span>
     </label>
     <label>
       <input type="checkbox" id="toggle-heat">
-      <span>لایه پهنه‌ای (هیت‌مپ پیوسته)</span>
+      <span>لایه پهنه‌ای (هیت‌مپ)</span>
     </label>
   </div>
 
@@ -263,7 +264,7 @@
 
   <div id="map"></div>
 
-  <!-- اسکریپت‌ها -->
+  <!-- اسکریپت‌های Leaflet -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 
@@ -286,11 +287,11 @@
       return "بسیار کم";
     }
 
-    // مرکزدهی اولیه روی استان فارس
+    // مقداردهی اولیه نقشه
     const map = L.map('map', {
-      center: [28.8, 53.5],
+      center: [29.0, 53.0],
       zoom: 7,
-      minZoom: 5,
+      minZoom: 6,
       zoomControl: false
     });
 
@@ -302,7 +303,7 @@
     }).addTo(map);
 
     const directPointsLayer = L.layerGroup().addTo(map);
-    const interpPointsLayer = L.layerGroup().addTo(map);
+    const interpPointsLayer = L.layerGroup();
     let heatLayer = null;
 
     async function loadData() {
@@ -322,10 +323,23 @@
         const allCoords = [];
 
         points.forEach(p => {
-          const lat = parseFloat(p.lat);
-          const lon = parseFloat(p.lon);
-          const fwi = parseFloat(p.fwi);
+          const lat = Number(p.lat);
+          const lon = Number(p.lon);
+          const fwi = Number(p.fwi);
           const isInterp = (p.interpolated === true);
+
+          // اعتبارسنجی محدوده مختصات استان فارس
+          const validCoordinate =
+            Number.isFinite(lat) &&
+            Number.isFinite(lon) &&
+            lat >= 26.8 &&
+            lat <= 32.0 &&
+            lon >= 49.8 &&
+            lon <= 56.0;
+
+          if (!validCoordinate || !Number.isFinite(fwi)) {
+            return;
+          }
 
           allCoords.push([lat, lon]);
 
@@ -335,7 +349,7 @@
           if (isInterp) {
             interpCount++;
             const marker = L.circleMarker([lat, lon], {
-              radius: 3.5,
+              radius: 4,
               fillColor: getFwiColor(fwi),
               color: '#ffffff',
               weight: 1,
@@ -375,10 +389,10 @@
           }
         });
 
-        // لایه هیت‌مپ
+        // ساخت لایه هیت‌مپ (بدون اضافه کردن پیش‌فرض به نقشه)
         heatLayer = L.heatLayer(heatData, {
-          radius: 14,
-          blur: 12,
+          radius: 12,
+          blur: 10,
           maxZoom: 10,
           max: 1.0,
           gradient: {
@@ -391,12 +405,26 @@
           }
         });
 
-        // زوم خودکار دقیق برای جا گرفتن تمام استان (شمال تا جنوب شرق)
+        // زوم دقیق و کادربندی روی کل استان فارس
         if (allCoords.length > 0) {
-          map.fitBounds(allCoords, { padding: [40, 40] });
+          const bounds = L.latLngBounds(allCoords);
+          map.fitBounds(bounds, {
+            paddingTopLeft: [20, 20],
+            paddingBottomRight: [20, 20],
+            maxZoom: 9
+          });
         }
 
-        // بروزرسانی آمار
+        // تضمین وضعیت اولیه‌ی لایه‌ها
+        map.addLayer(directPointsLayer);
+        if (map.hasLayer(interpPointsLayer)) map.removeLayer(interpPointsLayer);
+        if (heatLayer && map.hasLayer(heatLayer)) map.removeLayer(heatLayer);
+
+        document.getElementById('toggle-direct').checked = true;
+        document.getElementById('toggle-interp').checked = false;
+        document.getElementById('toggle-heat').checked = false;
+
+        // بروزرسانی پنل آمار
         document.getElementById('stat-points').innerText = points.length.toLocaleString('fa-IR');
         document.getElementById('count-direct').innerText = directCount.toLocaleString('fa-IR');
         document.getElementById('count-interp').innerText = interpCount.toLocaleString('fa-IR');
@@ -420,7 +448,7 @@
       }
     }
 
-    // لیسنرهای کنترل تیک‌ها
+    // شنوندگان تغییر وضعیت تیک لایه‌ها
     document.getElementById('toggle-direct').addEventListener('change', function(e) {
       if (e.target.checked) map.addLayer(directPointsLayer);
       else map.removeLayer(directPointsLayer);
