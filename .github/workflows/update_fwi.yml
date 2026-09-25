@@ -30,6 +30,7 @@ jobs:
         run: |
           mkdir -p data
           cat > request_fwi.py <<'PY'
+          import os
           import re
           import json
           import math
@@ -40,7 +41,7 @@ jobs:
           from concurrent.futures import ThreadPoolExecutor, as_completed
           from scipy.spatial import cKDTree
           from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
-          from shapely.geometry import Point
+          from shapely.geometry import Point, box
           from datetime import datetime, timedelta, timezone
 
           warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
@@ -48,7 +49,10 @@ jobs:
           WMS_URL = "https://maps.effis.emergency.copernicus.eu/gwis"
           LAYER = "ecmwf.query"
           QUERY_LAYER = "ecmwf.query"
-          BBOX = [50.0, 27.0, 55.0, 32.0]
+          
+          # محدوده کامل و اصلاح‌شده برای پوشش ۱۰۰٪ تمام نقاط جنوب (لارستان، لامرد، گراش، خنج) و شمال
+          # [min_lon, min_lat, max_lon, max_lat]
+          BBOX = [50.0, 26.6, 55.8, 32.0]
           GRID_STEP = 0.05
           POINT_WIDTH = 101
           POINT_HEIGHT = 101
@@ -128,7 +132,7 @@ jobs:
                   except ValueError:
                       pass
 
-              # 3. پیدا کردن اولین عدد اعشاری منطقی در صورت ساده بودن خروجی
+              # 3. پیدا کردن اولین عدد اعشاری منطقی
               for num in re.findall(r"[-+]?\d*\.?\d+", text):
                   try:
                       val = float(num)
@@ -167,11 +171,9 @@ jobs:
                   "TIME": target_date
               }
 
-          # تست اتصال به سرور با پارامتر STYLES اضافه شده
           test_params = get_wms_params(52.58, 29.62)
           res_test = session.get(WMS_URL, params=test_params, timeout=15)
           print(f"Sample Server Response Code: {res_test.status_code}")
-          print("Sample Server Response Preview:\n", res_test.text[:300])
 
           def fetch_point(pt):
               lon, lat = pt
@@ -185,17 +187,27 @@ jobs:
                   pass
               return (lon, lat, None)
 
-          print("Reading fars.geojson...")
-          fars = gpd.read_file("fars.geojson")
-          if fars.crs is None:
-              fars = fars.set_crs("EPSG:4326")
+          # بارگذاری مرز دقیق (اگر fars.geojson بود استفاده شود، در غیر این صورت IRAN.geojson یا کادر bbox)
+          if os.path.exists("fars.geojson"):
+              print("Reading fars.geojson...")
+              gdf = gpd.read_file("fars.geojson")
+          elif os.path.exists("IRAN.geojson"):
+              print("Reading IRAN.geojson...")
+              gdf = gpd.read_file("IRAN.geojson")
           else:
-              fars = fars.to_crs("EPSG:4326")
+              gdf = None
 
-          try:
-              geometry = fars.geometry.union_all()
-          except AttributeError:
-              geometry = fars.geometry.unary_union
+          if gdf is not None:
+              if gdf.crs is None:
+                  gdf = gdf.set_crs("EPSG:4326")
+              else:
+                  gdf = gdf.to_crs("EPSG:4326")
+              try:
+                  geometry = gdf.geometry.union_all()
+              except AttributeError:
+                  geometry = gdf.geometry.unary_union
+          else:
+              geometry = box(BBOX[0], BBOX[1], BBOX[2], BBOX[3])
 
           points = []
           lat = BBOX[1]
@@ -203,13 +215,13 @@ jobs:
               lon = BBOX[0]
               while lon <= BBOX[2] + 1e-6:
                   p = Point(lon, lat)
-                  if geometry.covers(p):
+                  if geometry.intersects(p) or geometry.covers(p):
                       points.append((round(lon, 5), round(lat, 5)))
                   lon += GRID_STEP
               lat += GRID_STEP
 
           total = len(points)
-          print(f"Total points inside Fars: {total}")
+          print(f"Total points generated: {total}")
           print(f"Fetching data with {MAX_WORKERS} workers...")
 
           known_coords, known_values, missing_points = [], [], []
@@ -238,6 +250,7 @@ jobs:
           results = [{"lat": lat, "lon": lon, "fwi": val, "interpolated": False}
                      for (lon, lat), val in zip(known_coords, known_values)]
 
+          # در صورت وجود نقاط خالی در جنوب یا مرزها، با IDW پر می‌شوند
           if missing_points:
               print(f"Interpolating {len(missing_points)} missing points via IDW...")
               tree = cKDTree(known_coords)
@@ -267,7 +280,14 @@ jobs:
               "forecast_gregorian": target_date,
               "forecast_shamsi": shamsi_date,
               "generated_at_iran": now.strftime("%Y-%m-%d %H:%M"),
-              "statistics": {"min": round(min(vals), 3), "max": round(max(vals), 3), "mean": round(sum(vals)/len(vals), 3), "count": len(results)},
+              "statistics": {
+                  "min": round(min(vals), 3),
+                  "max": round(max(vals), 3),
+                  "mean": round(sum(vals)/len(vals), 3),
+                  "count": len(results),
+                  "direct_points": len(known_values),
+                  "interpolated_points": len(missing_points)
+              },
               "points": results
           }
           with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
@@ -285,6 +305,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes"
           else
-            git commit -m "Update FWI data with IDW gap-fill"
+            git commit -m "Update FWI data with expanded south boundary & IDW gap-fill"
             git push
           fi
