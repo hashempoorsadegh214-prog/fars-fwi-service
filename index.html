@@ -29,14 +29,14 @@
       z-index: 1;
     }
 
-    /* نوار بالای نقشه */
+    /* نوار هدر داشبورد */
     .dashboard-header {
       position: absolute;
       top: 14px;
       right: 14px;
       left: 14px;
       z-index: 1000;
-      background: rgba(15, 23, 42, 0.90);
+      background: rgba(15, 23, 42, 0.92);
       backdrop-filter: blur(10px);
       border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 12px;
@@ -50,7 +50,7 @@
     }
 
     .title-box h1 {
-      font-size: 1.1rem;
+      font-size: 1.05rem;
       font-weight: 700;
       color: #f8fafc;
       display: flex;
@@ -59,57 +59,103 @@
     }
 
     .title-box p {
-      font-size: 0.75rem;
+      font-size: 0.73rem;
       color: #94a3b8;
       margin-top: 2px;
     }
 
     .stats-box {
       display: flex;
-      gap: 12px;
+      gap: 10px;
+      flex-wrap: wrap;
     }
 
     .stat-badge {
       background: rgba(255, 255, 255, 0.05);
       border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 8px;
-      padding: 5px 12px;
+      padding: 4px 10px;
       text-align: center;
-      min-width: 80px;
+      min-width: 75px;
     }
 
     .stat-badge .num {
-      font-size: 1rem;
+      font-size: 0.95rem;
       font-weight: bold;
       color: #38bdf8;
       display: block;
     }
 
     .stat-badge .lbl {
-      font-size: 0.68rem;
+      font-size: 0.65rem;
       color: #cbd5e1;
     }
 
-    /* راهنمای رنگ‌ها */
-    .legend-card {
+    /* پنل کنترل لایه‌ها */
+    .layer-control-card {
       position: absolute;
-      bottom: 22px;
-      left: 16px;
+      top: 85px;
+      right: 14px;
       z-index: 1000;
       background: rgba(15, 23, 42, 0.92);
       backdrop-filter: blur(10px);
       border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 10px;
       padding: 12px 14px;
+      color: #f8fafc;
+      font-size: 0.78rem;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-width: 200px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+    }
+
+    .layer-control-title {
+      font-size: 0.8rem;
+      font-weight: bold;
+      color: #38bdf8;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      padding-bottom: 4px;
+      margin-bottom: 2px;
+    }
+
+    .layer-control-card label {
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .badge-count {
+      font-size: 0.7rem;
+      background: rgba(255,255,255,0.12);
+      padding: 1px 6px;
+      border-radius: 10px;
+      margin-right: auto;
+      color: #94a3b8;
+    }
+
+    /* راهنمای رنگ‌ها */
+    .legend-card {
+      position: absolute;
+      bottom: 20px;
+      left: 14px;
+      z-index: 1000;
+      background: rgba(15, 23, 42, 0.92);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 10px;
+      padding: 10px 14px;
       color: #f1f5f9;
       width: 215px;
       box-shadow: 0 6px 25px rgba(0,0,0,0.5);
     }
 
     .legend-title {
-      font-size: 0.8rem;
+      font-size: 0.78rem;
       font-weight: 700;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
       border-bottom: 1px solid rgba(255,255,255,0.1);
       padding-bottom: 4px;
       text-align: center;
@@ -118,40 +164,15 @@
     .legend-row {
       display: flex;
       align-items: center;
-      font-size: 0.72rem;
-      margin-bottom: 5px;
+      font-size: 0.7rem;
+      margin-bottom: 4px;
     }
 
     .legend-color {
-      width: 16px;
+      width: 14px;
       height: 10px;
       border-radius: 2px;
       margin-left: 8px;
-    }
-
-    /* سوییچ لایه‌ها */
-    .view-control {
-      position: absolute;
-      top: 85px;
-      right: 14px;
-      z-index: 1000;
-      background: rgba(15, 23, 42, 0.90);
-      backdrop-filter: blur(10px);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 10px;
-      padding: 8px 12px;
-      color: #f8fafc;
-      font-size: 0.78rem;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .view-control label {
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 6px;
     }
 
     /* لودر */
@@ -169,7 +190,7 @@
       border: 1px solid #38bdf8;
     }
 
-    /* استایل پاپ‌آپ */
+    /* پاپ‌آپ */
     .leaflet-popup-content-wrapper {
       background: #1e293b !important;
       color: #fff !important;
@@ -183,12 +204,12 @@
 </head>
 <body>
 
-  <div id="loading-indicator">در حال بارگذاری ۴,۲۹۷ نقطه پایش استان فارس...</div>
+  <div id="loading-indicator">در حال بارگذاری لایه‌ها و داده‌های پایش استان فارس...</div>
 
   <div class="dashboard-header">
     <div class="title-box">
       <h1>🔥 سامانه پایش شاخص خطر آتش‌سوزی (FWI) استان فارس</h1>
-      <p>محاسبات خودکار روزانه داده‌های جهانی Copernicus GWIS</p>
+      <p>تفکیک ایستگاه‌های مستقیم ماهواره‌ای و درون‌یابی محاسباتی (Copernicus / GWIS)</p>
     </div>
     <div class="stats-box">
       <div class="stat-badge">
@@ -205,19 +226,27 @@
       </div>
       <div class="stat-badge">
         <span class="num" id="stat-points">--</span>
-        <span class="lbl">تعداد نقاط</span>
+        <span class="lbl">مجموع نقاط</span>
       </div>
     </div>
   </div>
 
-  <div class="view-control">
+  <!-- پنل تفکیک لایه‌ها -->
+  <div class="layer-control-card">
+    <div class="layer-control-title">مدیریت نمایش لایه‌ها</div>
     <label>
-      <input type="checkbox" id="toggle-heat" checked>
-      نمایش لایه پهنه‌ای (هیت‌مپ)
+      <input type="checkbox" id="toggle-direct" checked>
+      <span>نقاط مستقیم (GWIS)</span>
+      <span class="badge-count" id="count-direct">۰</span>
     </label>
     <label>
-      <input type="checkbox" id="toggle-points" checked>
-      نمایش نقاط محاسباتی
+      <input type="checkbox" id="toggle-interp" checked>
+      <span>نقاط درون‌یابی‌شده (IDW)</span>
+      <span class="badge-count" id="count-interp">۰</span>
+    </label>
+    <label>
+      <input type="checkbox" id="toggle-heat">
+      <span>لایه پهنه‌ای (هیت‌مپ)</span>
     </label>
   </div>
 
@@ -233,7 +262,7 @@
 
   <div id="map"></div>
 
-  <!-- اسکریپت‌های Leaflet -->
+  <!-- اسکریپت‌ها -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 
@@ -257,7 +286,7 @@
     }
 
     const map = L.map('map', {
-      center: [29.2, 53.2],
+      center: [29.0, 53.3],
       zoom: 7,
       minZoom: 6,
       zoomControl: false
@@ -265,67 +294,95 @@
 
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-    // نقشه پایه OpenStreetMap استاندارد
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap',
       maxZoom: 18
     }).addTo(map);
 
-    let pointsLayer = L.layerGroup().addTo(map);
+    // گروه‌های لایه مجزا
+    const directPointsLayer = L.layerGroup().addTo(map);
+    const interpPointsLayer = L.layerGroup().addTo(map);
     let heatLayer = null;
 
     async function loadData() {
       const loader = document.getElementById('loading-indicator');
       try {
         const response = await fetch('data/fwi_fars.json?v=' + Date.now());
-        if (!response.ok) {
-          throw new Error('خطا در دریافت فایل داده: ' + response.status);
-        }
+        if (!response.ok) throw new Error('خطا در دریافت داده: ' + response.status);
 
         const data = await response.json();
         const points = data.points || [];
 
-        if (points.length === 0) {
-          throw new Error('لیست نقاط در فایل خالی است.');
-        }
+        if (points.length === 0) throw new Error('لیست نقاط خالی است.');
 
         const heatData = [];
+        let directCount = 0;
+        let interpCount = 0;
+        const bounds = [];
 
         points.forEach(p => {
           const lat = p.lat;
           const lon = p.lon;
           const fwi = parseFloat(p.fwi);
+          const isInterp = (p.interpolated === true);
 
-          // برای هیت‌مپ
+          bounds.push([lat, lon]);
+
+          // برای هیت مپ
           const intensity = Math.min(1.0, Math.max(0.1, fwi / 70.0));
           heatData.push([lat, lon, intensity]);
 
-          // برای مارکرهای نقطه‌ای
-          const marker = L.circleMarker([lat, lon], {
-            radius: 3.5,
-            fillColor: getFwiColor(fwi),
-            color: '#0f172a',
-            weight: 0.5,
-            opacity: 0.8,
-            fillOpacity: 0.85
-          });
+          if (isInterp) {
+            interpCount++;
+            // نقاط درون‌یابی شده: حاشیه خط‌چین با نقطه متمایز
+            const marker = L.circleMarker([lat, lon], {
+              radius: 4,
+              fillColor: getFwiColor(fwi),
+              color: '#ffffff',
+              weight: 1,
+              dashArray: '2, 2',
+              opacity: 0.9,
+              fillOpacity: 0.85
+            });
 
-          marker.bindPopup(`
-            <div style="direction: rtl; text-align: right; font-size: 0.8rem; line-height: 1.6;">
-              <strong style="color: #38bdf8;">نقطه دیدبانی استان فارس</strong><br>
-              مختصات: ${lat.toFixed(2)}°N , ${lon.toFixed(2)}°E<br>
-              شاخص FWI: <b style="color:${getFwiColor(fwi)}">${fwi.toFixed(1)}</b><br>
-              وضعیت خطر: <b>${getFwiFaLevel(fwi)}</b>
-            </div>
-          `);
+            marker.bindPopup(`
+              <div style="direction: rtl; text-align: right; font-size: 0.8rem; line-height: 1.6;">
+                <strong style="color: #fbbf24;">نقطه محاسباتی (درون‌یابی IDW)</strong><br>
+                مختصات: ${lat.toFixed(3)}°N , ${lon.toFixed(3)}°E<br>
+                شاخص FWI: <b style="color:${getFwiColor(fwi)}">${fwi.toFixed(1)}</b><br>
+                وضعیت: <b>${getFwiFaLevel(fwi)}</b>
+              </div>
+            `);
+            interpPointsLayer.addLayer(marker);
 
-          pointsLayer.addLayer(marker);
+          } else {
+            directCount++;
+            // نقاط مستقیم GWIS
+            const marker = L.circleMarker([lat, lon], {
+              radius: 3.5,
+              fillColor: getFwiColor(fwi),
+              color: '#0f172a',
+              weight: 0.5,
+              opacity: 0.85,
+              fillOpacity: 0.85
+            });
+
+            marker.bindPopup(`
+              <div style="direction: rtl; text-align: right; font-size: 0.8rem; line-height: 1.6;">
+                <strong style="color: #38bdf8;">نقطه ماهواره‌ای مستقیم (GWIS)</strong><br>
+                مختصات: ${lat.toFixed(3)}°N , ${lon.toFixed(3)}°E<br>
+                شاخص FWI: <b style="color:${getFwiColor(fwi)}">${fwi.toFixed(1)}</b><br>
+                وضعیت: <b>${getFwiFaLevel(fwi)}</b>
+              </div>
+            `);
+            directPointsLayer.addLayer(marker);
+          }
         });
 
-        // لایه هیت‌مپ
+        // ساخت هیت‌مپ با شفافیت مناسب
         heatLayer = L.heatLayer(heatData, {
-          radius: 18,
-          blur: 15,
+          radius: 16,
+          blur: 14,
           maxZoom: 10,
           max: 1.0,
           gradient: {
@@ -336,11 +393,18 @@
             0.8: '#d7191c',
             1.0: '#7f0000'
           }
-        }).addTo(map);
+        });
 
-        // پر کردن باکس‌های آماری
+        // هماهنگ‌سازی کادر نقشه با تمام نقاط استان (پوشش کامل جنوب شرق و شمال)
+        if (bounds.length > 0) {
+          map.fitBounds(bounds, { padding: [30, 30] });
+        }
+
+        // بروزرسانی شمارنده‌ها و آمار
         document.getElementById('stat-points').innerText = points.length.toLocaleString('fa-IR');
-        
+        document.getElementById('count-direct').innerText = directCount.toLocaleString('fa-IR');
+        document.getElementById('count-interp').innerText = interpCount.toLocaleString('fa-IR');
+
         if (data.statistics) {
           document.getElementById('stat-max').innerText = Number(data.statistics.max).toFixed(1);
           document.getElementById('stat-mean').innerText = Number(data.statistics.mean).toFixed(1);
@@ -348,8 +412,6 @@
 
         if (data.forecast_shamsi) {
           document.getElementById('stat-date').innerText = data.forecast_shamsi;
-        } else if (data.forecast_gregorian) {
-          document.getElementById('stat-date').innerText = data.forecast_gregorian;
         }
 
         loader.style.display = 'none';
@@ -362,16 +424,21 @@
       }
     }
 
-    document.getElementById('toggle-points').addEventListener('change', function(e) {
-      if (e.target.checked) map.addLayer(pointsLayer);
-      else map.removeLayer(pointsLayer);
+    // کنترل تیک‌ها
+    document.getElementById('toggle-direct').addEventListener('change', function(e) {
+      if (e.target.checked) map.addLayer(directPointsLayer);
+      else map.removeLayer(directPointsLayer);
+    });
+
+    document.getElementById('toggle-interp').addEventListener('change', function(e) {
+      if (e.target.checked) map.addLayer(interpPointsLayer);
+      else map.removeLayer(interpPointsLayer);
     });
 
     document.getElementById('toggle-heat').addEventListener('change', function(e) {
-      if (heatLayer) {
-        if (e.target.checked) map.addLayer(heatLayer);
-        else map.removeLayer(heatLayer);
-      }
+      if (!heatLayer) return;
+      if (e.target.checked) map.addLayer(heatLayer);
+      else map.removeLayer(heatLayer);
     });
 
     loadData();
