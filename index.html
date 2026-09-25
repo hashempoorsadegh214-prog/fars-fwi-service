@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>سامانه پایش شاخص خطر آتش‌سوزی استان فارس (FWI)</title>
+  <title>سامانه پایش شاخص خطر آتش‌سوزی کل ایران (FWI)</title>
 
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -29,7 +29,7 @@
       z-index: 1;
     }
 
-    /* نوار هدر داشبورد */
+    /* نوار بالای نقشه */
     .dashboard-header {
       position: absolute;
       top: 14px;
@@ -91,7 +91,7 @@
       color: #cbd5e1;
     }
 
-    /* پنل مدیریت لایه‌ها */
+    /* کنترل لایه‌ها */
     .layer-control-card {
       position: absolute;
       top: 85px;
@@ -177,7 +177,6 @@
       margin-left: 8px;
     }
 
-    /* پیام در حال بارگذاری */
     #loading-indicator {
       position: absolute;
       top: 50%;
@@ -206,17 +205,17 @@
 </head>
 <body>
 
-  <div id="loading-indicator">در حال بارگذاری اطلاعات شاخص FWI استان فارس...</div>
+  <div id="loading-indicator">در حال بارگذاری شاخص FWI کل کشور ایران...</div>
 
   <div class="dashboard-header">
     <div class="title-box">
-      <h1>🔥 سامانه پایش شاخص خطر آتش‌سوزی (FWI) استان فارس</h1>
-      <p>تفکیک ایستگاه‌های مستقیم ماهواره‌ای و درون‌یابی محاسباتی (GWIS / Copernicus)</p>
+      <h1>🔥 سامانه پایش شاخص خطر آتش‌سوزی (FWI) ایران</h1>
+      <p>داده‌های روزانه سامانه Copernicus GWIS و درون‌یابی مکانی</p>
     </div>
     <div class="stats-box">
       <div class="stat-badge">
         <span class="num" id="stat-date">--</span>
-        <span class="lbl">تاریخ پیش‌بینی</span>
+        <span class="lbl">تاریخ</span>
       </div>
       <div class="stat-badge">
         <span class="num" id="stat-max">--</span>
@@ -224,7 +223,7 @@
       </div>
       <div class="stat-badge">
         <span class="num" id="stat-mean">--</span>
-        <span class="lbl">میانگین استان</span>
+        <span class="lbl">میانگین کل</span>
       </div>
       <div class="stat-badge">
         <span class="num" id="stat-points">--</span>
@@ -233,22 +232,21 @@
     </div>
   </div>
 
-  <!-- پنل تفکیک لایه‌ها -->
   <div class="layer-control-card">
     <div class="layer-control-title">مدیریت لایه‌ها</div>
     <label>
+      <input type="checkbox" id="toggle-heat" checked>
+      <span>لایه پهنه‌ای (هیت‌مپ)</span>
+    </label>
+    <label>
       <input type="checkbox" id="toggle-direct" checked>
-      <span>نقاط دیدبانی مستقیم (GWIS)</span>
+      <span>نقاط مستقیم (GWIS)</span>
       <span class="badge-count" id="count-direct">۰</span>
     </label>
     <label>
-      <input type="checkbox" id="toggle-interp">
+      <input type="checkbox" id="toggle-interp" checked>
       <span>نقاط درون‌یابی‌شده (IDW)</span>
       <span class="badge-count" id="count-interp">۰</span>
-    </label>
-    <label>
-      <input type="checkbox" id="toggle-heat">
-      <span>لایه پهنه‌ای (هیت‌مپ)</span>
     </label>
   </div>
 
@@ -264,7 +262,6 @@
 
   <div id="map"></div>
 
-  <!-- اسکریپت‌های Leaflet -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 
@@ -287,11 +284,11 @@
       return "بسیار کم";
     }
 
-    // مقداردهی اولیه نقشه
+    // مرکز نقشه روی جغرافیای کل ایران
     const map = L.map('map', {
-      center: [29.0, 53.0],
-      zoom: 7,
-      minZoom: 6,
+      center: [32.4279, 53.6880],
+      zoom: 5,
+      minZoom: 4,
       zoomControl: false
     });
 
@@ -302,7 +299,21 @@
       maxZoom: 18
     }).addTo(map);
 
-    const directPointsLayer = L.layerGroup().addTo(map);
+    // بارگذاری خط مرزی ایران روی نقشه در صورت وجود فایل
+    fetch('IRAN.geojson')
+      .then(res => res.json())
+      .then(geojson => {
+        L.geoJSON(geojson, {
+          style: {
+            color: '#38bdf8',
+            weight: 1.5,
+            fillOpacity: 0
+          }
+        }).addTo(map);
+      })
+      .catch(() => console.log('IRAN.geojson loaded on server.'));
+
+    const directPointsLayer = L.layerGroup();
     const interpPointsLayer = L.layerGroup();
     let heatLayer = null;
 
@@ -328,39 +339,37 @@
           const fwi = Number(p.fwi);
           const isInterp = (p.interpolated === true);
 
-          // اعتبارسنجی محدوده مختصات استان فارس
+          // محدوده جغرافیایی کل ایران
           const validCoordinate =
             Number.isFinite(lat) &&
             Number.isFinite(lon) &&
-            lat >= 26.8 &&
-            lat <= 32.0 &&
-            lon >= 49.8 &&
-            lon <= 56.0;
+            lat >= 24.5 &&
+            lat <= 40.5 &&
+            lon >= 43.5 &&
+            lon <= 64.0;
 
-          if (!validCoordinate || !Number.isFinite(fwi)) {
-            return;
-          }
+          if (!validCoordinate || !Number.isFinite(fwi)) return;
 
           allCoords.push([lat, lon]);
 
-          const intensity = Math.min(1.0, Math.max(0.1, fwi / 70.0));
+          const intensity = Math.min(1.0, Math.max(0.15, fwi / 65.0));
           heatData.push([lat, lon, intensity]);
 
           if (isInterp) {
             interpCount++;
             const marker = L.circleMarker([lat, lon], {
-              radius: 4,
+              radius: 3,
               fillColor: getFwiColor(fwi),
-              color: '#ffffff',
-              weight: 1,
+              color: '#fbbf24',
+              weight: 0.8,
               dashArray: '2, 2',
-              fillOpacity: 0.9
+              fillOpacity: 0.85
             });
 
             marker.bindPopup(`
               <div style="direction: rtl; text-align: right; font-size: 0.8rem; line-height: 1.6;">
-                <strong style="color: #fbbf24;">نقطه محاسباتی (درون‌یابی IDW)</strong><br>
-                مختصات: ${lat.toFixed(3)}°N , ${lon.toFixed(3)}°E<br>
+                <strong style="color: #fbbf24;">نقطه محاسباتی (IDW)</strong><br>
+                مختصات: ${lat.toFixed(2)}°N , ${lon.toFixed(2)}°E<br>
                 شاخص FWI: <b style="color:${getFwiColor(fwi)}">${fwi.toFixed(1)}</b><br>
                 طبقه خطر: <b>${getFwiFaLevel(fwi)}</b>
               </div>
@@ -370,7 +379,7 @@
           } else {
             directCount++;
             const marker = L.circleMarker([lat, lon], {
-              radius: 3.5,
+              radius: 3,
               fillColor: getFwiColor(fwi),
               color: '#0f172a',
               weight: 0.5,
@@ -379,8 +388,8 @@
 
             marker.bindPopup(`
               <div style="direction: rtl; text-align: right; font-size: 0.8rem; line-height: 1.6;">
-                <strong style="color: #38bdf8;">نقطه دیدبانی مستقیم (GWIS)</strong><br>
-                مختصات: ${lat.toFixed(3)}°N , ${lon.toFixed(3)}°E<br>
+                <strong style="color: #38bdf8;">نقطه دریافت ماهواره‌ای</strong><br>
+                مختصات: ${lat.toFixed(2)}°N , ${lon.toFixed(2)}°E<br>
                 شاخص FWI: <b style="color:${getFwiColor(fwi)}">${fwi.toFixed(1)}</b><br>
                 طبقه خطر: <b>${getFwiFaLevel(fwi)}</b>
               </div>
@@ -389,43 +398,33 @@
           }
         });
 
-        // ساخت لایه هیت‌مپ (بدون اضافه کردن پیش‌فرض به نقشه)
+        // شعاع هیت‌مپ متناسب با ابعاد کل ایران و گام ۰.۲۵ درجه
         heatLayer = L.heatLayer(heatData, {
-          radius: 12,
-          blur: 10,
+          radius: 28,
+          blur: 20,
           maxZoom: 10,
           max: 1.0,
+          minOpacity: 0.35,
           gradient: {
-            0.1: '#004d00',
-            0.25: '#2b83ba',
-            0.45: '#ffffbf',
-            0.65: '#fdae61',
-            0.8: '#d7191c',
+            0.0: '#004d00',
+            0.15: '#2b83ba',
+            0.35: '#ffffbf',
+            0.55: '#fdae61',
+            0.75: '#d7191c',
             1.0: '#7f0000'
           }
         });
 
-        // زوم دقیق و کادربندی روی کل استان فارس
+        map.addLayer(heatLayer);
+        map.addLayer(directPointsLayer);
+        map.addLayer(interpPointsLayer);
+
         if (allCoords.length > 0) {
           const bounds = L.latLngBounds(allCoords);
-          map.fitBounds(bounds, {
-            paddingTopLeft: [20, 20],
-            paddingBottomRight: [20, 20],
-            maxZoom: 9
-          });
+          map.fitBounds(bounds, { padding: [20, 20] });
         }
 
-        // تضمین وضعیت اولیه‌ی لایه‌ها
-        map.addLayer(directPointsLayer);
-        if (map.hasLayer(interpPointsLayer)) map.removeLayer(interpPointsLayer);
-        if (heatLayer && map.hasLayer(heatLayer)) map.removeLayer(heatLayer);
-
-        document.getElementById('toggle-direct').checked = true;
-        document.getElementById('toggle-interp').checked = false;
-        document.getElementById('toggle-heat').checked = false;
-
-        // بروزرسانی پنل آمار
-        document.getElementById('stat-points').innerText = points.length.toLocaleString('fa-IR');
+        document.getElementById('stat-points').innerText = (directCount + interpCount).toLocaleString('fa-IR');
         document.getElementById('count-direct').innerText = directCount.toLocaleString('fa-IR');
         document.getElementById('count-interp').innerText = interpCount.toLocaleString('fa-IR');
 
@@ -434,8 +433,8 @@
           document.getElementById('stat-mean').innerText = Number(data.statistics.mean).toFixed(1);
         }
 
-        if (data.forecast_shamsi) {
-          document.getElementById('stat-date').innerText = data.forecast_shamsi;
+        if (data.forecast_date) {
+          document.getElementById('stat-date').innerText = data.forecast_date;
         }
 
         loader.style.display = 'none';
@@ -448,7 +447,6 @@
       }
     }
 
-    // شنوندگان تغییر وضعیت تیک لایه‌ها
     document.getElementById('toggle-direct').addEventListener('change', function(e) {
       if (e.target.checked) map.addLayer(directPointsLayer);
       else map.removeLayer(directPointsLayer);
