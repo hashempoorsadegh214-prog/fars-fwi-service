@@ -24,22 +24,26 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install requests beautifulsoup4 geopandas shapely pandas xlsxwriter scipy numpy
+          python -m pip install requests beautifulsoup4 lxml geopandas shapely pandas xlsxwriter scipy numpy
 
-      - name: Fetch and Interpolate FWI (Fast Parallel)
+      - name: Fetch and Interpolate FWI
         run: |
           mkdir -p data
           cat > request_fwi.py <<'PY'
+          import re
           import json
           import math
+          import warnings
           import requests
           import numpy as np
           import geopandas as gpd
           from concurrent.futures import ThreadPoolExecutor, as_completed
           from scipy.spatial import cKDTree
-          from bs4 import BeautifulSoup
+          from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
           from shapely.geometry import Point
           from datetime import datetime, timedelta, timezone
+
+          warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
           WMS_URL = "https://maps.effis.emergency.copernicus.eu/gwis"
           LAYER = "ecmwf.query"
@@ -50,11 +54,11 @@ jobs:
           POINT_HEIGHT = 101
           HALF_SIZE_METERS = 12000
           OUTPUT_FILE = "data/fwi_fars.json"
-          MAX_WORKERS = 20
+          MAX_WORKERS = 15
 
           IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
           now = datetime.now(IRAN_TZ)
-          target = now.date() + timedelta(days=1)
+          target = now.date()
           target_date = target.strftime("%Y-%m-%d")
 
           def gregorian_to_jalali(gy, gm, gd):
@@ -93,27 +97,83 @@ jobs:
               y = math.log(math.tan(math.radians(lat) / 2.0 + math.pi / 4.0)) * 20037508.34 / math.pi
               return x, y
 
-          def parse_fwi(html):
+          def parse_fwi_response(text):
+              if not text or "ServiceException" in text:
+                  return None
+
+              # 1. جستجو در قالب جدول HTML
               try:
-                  soup = BeautifulSoup(html, "html.parser")
+                  soup = BeautifulSoup(text, "html.parser")
                   for row in soup.find_all("tr"):
-                      cells = row.find_all("td")
-                      if len(cells) < 2:
-                          continue
-                      label = cells[0].get_text(" ", strip=True).lower()
-                      value_text = cells[1].get_text(" ", strip=True)
-                      if "fire weather index" in label:
-                          val = float(value_text)
-                          if math.isfinite(val) and 0 <= val <= 200:
-                              return round(val, 3)
+                      cells = row.find_all(["td", "th"])
+                      if len(cells) >= 2:
+                          col1 = cells[0].get_text(" ", strip=True).lower()
+                          col2 = cells[1].get_text(" ", strip=True)
+                          if "fire weather index" in col1 or "fwi" in col1:
+                              m = re.search(r"[-+]?\d*\.?\d+", col2)
+                              if m:
+                                  val = float(m.group(0))
+                                  if 0 <= val <= 250:
+                                      return round(val, 3)
               except Exception:
                   pass
+
+              # 2. جستجو در قالب XML / GML
+              try:
+                  soup_xml = BeautifulSoup(text, "xml")
+                  # بررسی فیلدهای اختصاصی یا متداول GWIS
+                  for tag in soup_xml.find_all(re.compile(r"(fwi|value|gray_index|band_1|grid_value)", re.I)):
+                      val_str = tag.get_text(strip=True)
+                      try:
+                          val = float(val_str)
+                          if 0 <= val <= 250:
+                              return round(val, 3)
+                      except ValueError:
+                          continue
+              except Exception:
+                  pass
+
+              # 3. جستجوی الگوهای عددی کلیدی در کل متن خام
+              matches = re.findall(r"(?:fwi|fire[_\s]weather[_\s]index)[^\d]{1,20}([-+]?\d+(?:\.\d+)?)", text, re.I)
+              for m in matches:
+                  try:
+                      val = float(m)
+                      if 0 <= val <= 250:
+                          return round(val, 3)
+                  except ValueError:
+                      pass
+
               return None
 
           session = requests.Session()
           adapter = requests.adapters.HTTPAdapter(pool_connections=MAX_WORKERS, pool_maxsize=MAX_WORKERS, max_retries=2)
           session.mount("https://", adapter)
-          session.headers.update({"User-Agent": "FARS-FWI/1.0"})
+          session.headers.update({"User-Agent": "Mozilla/5.0 (FARS-FWI/1.0)"})
+
+          # ابتدا یک درخواست آزمایشی برای دیدن نوع پاسخ سرور ارسال می‌کنیم
+          test_x, test_y = lonlat_to_3857(52.58, 29.62) # مرکز حدودی شیراز
+          test_bbox = f"{test_x - HALF_SIZE_METERS},{test_y - HALF_SIZE_METERS},{test_x + HALF_SIZE_METERS},{test_y + HALF_SIZE_METERS}"
+          test_params = {
+              "SERVICE": "WMS", "VERSION": "1.1.1", "REQUEST": "GetFeatureInfo",
+              "LAYERS": LAYER, "QUERY_LAYERS": QUERY_LAYER, "SRS": "EPSG:3857",
+              "BBOX": test_bbox, "WIDTH": str(POINT_WIDTH), "HEIGHT": str(POINT_HEIGHT),
+              "X": "50", "Y": "50", "INFO_FORMAT": "text/html", "FEATURE_COUNT": "1",
+              "FORMAT": "image/png", "TRANSPARENT": "TRUE", "TIME": target_date
+          }
+          res_test = session.get(WMS_URL, params=test_params, timeout=15)
+          print(f"Sample Server Response Code: {res_test.status_code}")
+          print("Sample Server Snippet:", res_test.text[:250].replace("\n", " "))
+
+          # در صورتی که text/html خالی بود، فرمت xml را تست می‌کنیم
+          use_xml_format = False
+          if parse_fwi_response(res_test.text) is None:
+              test_params["INFO_FORMAT"] = "application/vnd.ogc.gml"
+              res_test_gml = session.get(WMS_URL, params=test_params, timeout=15)
+              if parse_fwi_response(res_test_gml.text) is not None or "<gml:" in res_test_gml.text:
+                  use_xml_format = True
+                  print("Switched INFO_FORMAT to application/vnd.ogc.gml")
+
+          selected_info_format = "application/vnd.ogc.gml" if use_xml_format else "text/html"
 
           def fetch_point(pt):
               lon, lat = pt
@@ -123,13 +183,13 @@ jobs:
                   "SERVICE": "WMS", "VERSION": "1.1.1", "REQUEST": "GetFeatureInfo",
                   "LAYERS": LAYER, "QUERY_LAYERS": QUERY_LAYER, "SRS": "EPSG:3857",
                   "BBOX": bbox, "WIDTH": str(POINT_WIDTH), "HEIGHT": str(POINT_HEIGHT),
-                  "X": "50", "Y": "50", "INFO_FORMAT": "text/html", "FEATURE_COUNT": "1",
+                  "X": "50", "Y": "50", "INFO_FORMAT": selected_info_format, "FEATURE_COUNT": "1",
                   "FORMAT": "image/png", "TRANSPARENT": "TRUE", "TIME": target_date
               }
               try:
-                  res = session.get(WMS_URL, params=params, timeout=10)
-                  if res.status_code == 200:
-                      val = parse_fwi(res.text)
+                  r = session.get(WMS_URL, params=params, timeout=10)
+                  if r.status_code == 200:
+                      val = parse_fwi_response(r.text)
                       return (lon, lat, val)
               except Exception:
                   pass
@@ -160,7 +220,7 @@ jobs:
 
           total = len(points)
           print(f"Total points inside Fars: {total}")
-          print(f"Fetching data in parallel ({MAX_WORKERS} threads)...")
+          print(f"Fetching data with {MAX_WORKERS} workers...")
 
           known_coords, known_values, missing_points = [], [], []
           done = 0
@@ -170,8 +230,8 @@ jobs:
               for future in as_completed(futures):
                   lon, lat, val = future.result()
                   done += 1
-                  if done % 500 == 0 or done == total:
-                      print(f"Progress: {done}/{total} points processed...")
+                  if done % 1000 == 0 or done == total:
+                      print(f"Progress: {done}/{total} points...")
                   if val is not None:
                       known_coords.append((lon, lat))
                       known_values.append(val)
@@ -181,7 +241,9 @@ jobs:
           print(f"Fetch completed: {len(known_values)} valid, {len(missing_points)} missing.")
 
           if not known_values:
-              raise RuntimeError("No numeric FWI values returned from EFFIS server.")
+              print("No valid values extracted directly. Sample full response was:")
+              print(res_test.text[:500])
+              raise RuntimeError("Could not parse FWI numeric values from response.")
 
           results = [{"lat": lat, "lon": lon, "fwi": val, "interpolated": False}
                      for (lon, lat), val in zip(known_coords, known_values)]
@@ -221,7 +283,7 @@ jobs:
           with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
               json.dump(output, f, ensure_ascii=False, indent=2)
 
-          print(f"Success! Data saved to {OUTPUT_FILE} ({len(results)} total points).")
+          print(f"Success! {OUTPUT_FILE} generated ({len(results)} points).")
           PY
           python request_fwi.py
 
