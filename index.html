@@ -1,141 +1,200 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fa" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>پایش حریق - نقشه اختصاصی استان فارس</title>
-    
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>🔥 پایش حریق (FWI) — استان فارس</title>
 
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Vazirmatn', sans-serif; }
-        body, html { height: 100%; width: 100%; background-color: #0b0f19; overflow: hidden; }
-        #map { height: 100vh; width: 100vw; background-color: #0b0f19; }
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" />
 
-        .header-panel {
-            position: absolute;
-            top: 15px;
-            left: 20px;
-            right: 20px;
-            z-index: 1000;
-            background: rgba(11, 15, 25, 0.9);
-            border: 1px solid rgba(255,255,255,0.15);
-            border-radius: 12px;
-            padding: 10px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            color: #fff;
-            backdrop-filter: blur(8px);
-        }
-        .header-title h1 { font-size: 1.1rem; }
-        .header-title p { font-size: 0.75rem; color: #94a3b8; }
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;font-family:Vazirmatn,system-ui,-apple-system,Segoe UI,Roboto,Arial;}
+    html,body{height:100%;width:100%;background:#0b0f19;overflow:hidden}
+    #map{height:100vh;width:100vw;background:#0b0f19}
 
-        .legend-panel {
-            position: absolute;
-            bottom: 25px;
-            left: 20px;
-            z-index: 1000;
-            background: rgba(11, 15, 25, 0.9);
-            border: 1px solid rgba(255,255,255,0.15);
-            border-radius: 10px;
-            padding: 12px 16px;
-            color: #fff;
-            font-size: 0.75rem;
-        }
-        .legend-item { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
-        .legend-color { width: 12px; height: 12px; border-radius: 2px; }
-    </style>
+    .header{
+      position:absolute;top:14px;left:18px;right:18px;z-index:1000;
+      background:rgba(11,15,25,.90);border:1px solid rgba(255,255,255,.15);
+      border-radius:12px;padding:10px 14px;color:#fff;backdrop-filter:blur(8px);
+      display:flex;justify-content:space-between;gap:10px;align-items:center;
+    }
+    .header h1{font-size:1.05rem;line-height:1.4}
+    .header p{font-size:.78rem;color:#94a3b8;margin-top:2px}
+    .chip{font-size:.75rem;padding:6px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.18);color:#e2e8f0}
+
+    .legend{
+      position:absolute;bottom:18px;left:18px;z-index:1000;
+      background:rgba(11,15,25,.90);border:1px solid rgba(255,255,255,.15);
+      border-radius:10px;padding:10px 12px;color:#fff;font-size:.78rem;
+      min-width:180px;backdrop-filter:blur(8px);
+    }
+    .legend b{display:block;margin-bottom:6px}
+    .row{display:flex;align-items:center;gap:8px;margin-top:5px}
+    .sw{width:12px;height:12px;border-radius:2px}
+    .note{
+      position:absolute;bottom:18px;right:18px;z-index:1000;
+      background:rgba(11,15,25,.90);border:1px solid rgba(255,255,255,.15);
+      border-radius:10px;padding:10px 12px;color:#e2e8f0;font-size:.78rem;
+      max-width:360px;backdrop-filter:blur(8px);
+    }
+    a{color:#60a5fa}
+  </style>
 </head>
+
 <body>
-
-    <div class="header-panel">
-        <div class="header-title">
-            <h1>🔥 پایش حریق (FWI) - محدوده برش‌خورده استان فارس</h1>
-            <p>بیرون از مرز استان فارس کاملاً ماسک و بریده شده است</p>
-        </div>
+  <div class="header">
+    <div>
+      <h1>🔥 پایش حریق (FWI) — محدوده استان فارس</h1>
+      <p>بیرون از مرز فارس ماسک شده است. لایه شاخص از فایل <span class="chip">data/fwi_fars.json</span> خوانده می‌شود.</p>
     </div>
+    <div class="chip" id="status">در حال بارگذاری…</div>
+  </div>
 
-    <div class="legend-panel">
-        <b>راهنمای خطر</b>
-        <div class="legend-item"><div class="legend-color" style="background:#22c55e;"></div> کم (0 - 11.2)</div>
-        <div class="legend-item"><div class="legend-color" style="background:#eab308;"></div> متوسط (11.2 - 21.3)</div>
-        <div class="legend-item"><div class="legend-color" style="background:#f97316;"></div> زیاد (21.3 - 38.0)</div>
-        <div class="legend-item"><div class="legend-color" style="background:#ef4444;"></div> بحرانی (بیشتر از 38)</div>
-    </div>
+  <div class="legend">
+    <b>راهنمای خطر (نمونه)</b>
+    <div class="row"><div class="sw" style="background:#22c55e"></div> کم</div>
+    <div class="row"><div class="sw" style="background:#eab308"></div> متوسط</div>
+    <div class="row"><div class="sw" style="background:#f97316"></div> زیاد</div>
+    <div class="row"><div class="sw" style="background:#ef4444"></div> بحرانی</div>
+  </div>
 
-    <div id="map"></div>
+  <div class="note">
+    اگر شاخص دیده نمی‌شود: کلید <b>F12</b> → تب <b>Console</b> را چک کنید.
+    همچنین آدرس مستقیم JSON را باز کنید:
+    <a href="./data/fwi_fars.json" target="_blank">./data/fwi_fars.json</a>
+  </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://leaflet.github.io/Leaflet.heat/dist/leaflet-heat.js"></script>
+  <div id="map"></div>
 
-    <script>
-        const map = L.map('map', {
-            center: [29.3, 53.2],
-            zoom: 7,
-            zoomControl: false
-        });
-        L.control.zoom({ position: 'bottomright' }).addTo(map);
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://leaflet.github.io/Leaflet.heat/dist/leaflet-heat.js"></script>
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 18,
-            attribution: '© OpenStreetMap'
-        }).addTo(map);
+  <script>
+    const statusEl = document.getElementById('status');
 
-        // برش زدن نقشه با ساخت ماسک معکوس (سوراخ کردن نقشه به شکل استان فارس)
-        fetch('fars.geojson')
-            .then(res => res.json())
-            .then(data => {
-                const worldMask = [
-                    [-90, -180],
-                    [-90, 180],
-                    [90, 180],
-                    [90, -180]
-                ];
+    function setStatus(text, ok=true){
+      statusEl.textContent = text;
+      statusEl.style.borderColor = ok ? 'rgba(34,197,94,.45)' : 'rgba(239,68,68,.45)';
+      statusEl.style.color = ok ? '#bbf7d0' : '#fecaca';
+    }
 
-                const coords = data.features[0].geometry.coordinates;
-                let hole = [];
+    const map = L.map('map', { zoomControl:false, preferCanvas:true })
+      .setView([29.3, 53.2], 7);
+    L.control.zoom({ position:'bottomright' }).addTo(map);
 
-                if (data.features[0].geometry.type === 'Polygon') {
-                    hole = coords[0].map(c => [c[1], c[0]]);
-                } else if (data.features[0].geometry.type === 'MultiPolygon') {
-                    hole = coords[0][0].map(c => [c[1], c[0]]);
-                }
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18, attribution: '© OpenStreetMap'
+    }).addTo(map);
 
-                // ماسک کردن کامل بیرون از استان فارس
-                L.polygon([worldMask, hole], {
-                    stroke: false,
-                    fillColor: '#0b0f19',
-                    fillOpacity: 0.94
-                }).addTo(map);
+    // --- 1) ماسک معکوس: فقط داخل فارس باز می‌ماند
+    async function loadMask(){
+      const res = await fetch('./fars.geojson?t=' + Date.now());
+      if(!res.ok) throw new Error('فایل fars.geojson پیدا نشد (HTTP ' + res.status + ')');
+      const gj = await res.json();
 
-                // خط مرزی برجسته دور استان فارس
-                const borderLayer = L.geoJSON(data, {
-                    style: {
-                        color: '#38bdf8',
-                        weight: 2.5,
-                        fillOpacity: 0.0
-                    }
-                }).addTo(map);
+      const feat = gj.features?.[0];
+      if(!feat) throw new Error('fars.geojson معتبر نیست یا feature ندارد');
 
-                map.fitBounds(borderLayer.getBounds(), { padding: [15, 15] });
-            });
+      const geom = feat.geometry;
+      let ring;
 
-        // بارگذاری نقاط هیت‌مپ
-        fetch('data/fwi_fars.json?t=' + Date.now())
-            .then(res => res.json())
-            .then(data => {
-                if (!data.points) return;
-                const heatPoints = data.points.map(p => [p.lat, p.lon, Math.min(1.0, p.fwi / 50.0)]);
-                L.heatLayer(heatPoints, {
-                    radius: 28,
-                    blur: 20,
-                    max: 1.0,
-                    gradient: { 0.2: '#22c55e', 0.4: '#38bdf8', 0.6: '#eab308', 0.8: '#f97316', 1.0: '#ef4444' }
-                }).addTo(map);
-            })
-            .catch(err => console.log('در حال انتظار برای داده:', err));
-    </script>
+      if(geom.type === 'Polygon') {
+        ring = geom.coordinates[0];
+      } else if(geom.type === 'MultiPolygon') {
+        ring = geom.coordinates[0][0];
+      } else {
+        throw new Error('نوع هندسه پشتیبانی نمی‌شود: ' + geom.type);
+      }
+
+      const holeLatLng = ring.map(c => [c[1], c[0]]);
+
+      const world = [[-90,-180],[-90,180],[90,180],[90,-180]];
+      L.polygon([world, holeLatLng], {
+        stroke:false, fillColor:'#0b0f19', fillOpacity:0.94
+      }).addTo(map);
+
+      const border = L.geoJSON(gj, {
+        style:{ color:'#38bdf8', weight:2.5, fillOpacity:0 }
+      }).addTo(map);
+
+      map.fitBounds(border.getBounds(), { padding:[14,14] });
+    }
+
+    // --- 2) بارگذاری داده FWI و رسم Heatmap
+    function normalizeFWI(fwi){
+      // مقیاس نمایشی برای heat: بین 0..1
+      // اگر FWI واقعی دارید می‌توانید این را دقیق‌تر کنید.
+      const v = Number(fwi);
+      if(!Number.isFinite(v)) return 0;
+      return Math.max(0, Math.min(1, v / 50.0));
+    }
+
+    async function loadFWI(){
+      const url = './data/fwi_fars.json?t=' + Date.now();
+      const res = await fetch(url);
+      if(!res.ok) throw new Error('فایل data/fwi_fars.json پیدا نشد (HTTP ' + res.status + ')');
+
+      const data = await res.json();
+
+      // پشتیبانی از چند فرمت رایج:
+      // 1) { points:[{lat,lon,fwi}, ...] }
+      // 2) [{lat,lon,fwi}, ...]
+      // 3) { data:[...] }
+      let points = [];
+      if (Array.isArray(data)) points = data;
+      else if (Array.isArray(data.points)) points = data.points;
+      else if (Array.isArray(data.data)) points = data.data;
+
+      if(!points.length) throw new Error('JSON خالی است یا کلید points ندارد');
+
+      const heatPts = points
+        .map(p => {
+          const lat = Number(p.lat ?? p.latitude);
+          const lon = Number(p.lon ?? p.lng ?? p.longitude);
+          const fwi = Number(p.fwi ?? p.value);
+          if(!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+          return [lat, lon, normalizeFWI(fwi)];
+        })
+        .filter(Boolean);
+
+      if(!heatPts.length) throw new Error('هیچ نقطه معتبر برای رسم Heatmap پیدا نشد');
+
+      const heat = L.heatLayer(heatPts, {
+        radius: 30,
+        blur: 22,
+        max: 1.0,
+        minOpacity: 0.25,
+        gradient: {
+          0.20:'#22c55e',
+          0.45:'#eab308',
+          0.70:'#f97316',
+          1.00:'#ef4444'
+        }
+      }).addTo(map);
+
+      return { count: heatPts.length };
+    }
+
+    // اجرای نهایی با پیام خطا روی نقشه
+    (async () => {
+      try{
+        setStatus('در حال بارگذاری مرز فارس…', true);
+        await loadMask();
+
+        setStatus('در حال بارگذاری شاخص FWI…', true);
+        const r = await loadFWI();
+
+        setStatus('نمایش داده شد — نقاط: ' + r.count, true);
+      }catch(err){
+        console.error(err);
+        setStatus('خطا: ' + err.message, false);
+        L.popup()
+          .setLatLng(map.getCenter())
+          .setContent('<div style="font-family:Vazirmatn;direction:rtl">❌ ' + err.message + '</div>')
+          .openOn(map);
+      }
+    })();
+  </script>
 </body>
 </html>
