@@ -5,6 +5,9 @@ on:
     - cron: "30 1 * * *"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   update-fwi:
     runs-on: ubuntu-latest
@@ -20,7 +23,7 @@ jobs:
       - name: Install Dependencies
         run: |
           pip install --upgrade pip
-          pip install requests beautifulsoup4 lxml geopandas shapely pandas xlsxwriter scipy numpy
+          pip install requests beautifulsoup4 lxml geopandas shapely pandas pyproj scipy numpy
 
       - name: Fetch and Process FWI for Iran
         run: |
@@ -28,34 +31,43 @@ jobs:
           import os
           import json
           import datetime
+          import math
           import requests
           from bs4 import BeautifulSoup
           import geopandas as gpd
           from shapely.geometry import Point, box
+          from shapely.ops import transform
+          import pyproj
           import numpy as np
           from scipy.spatial import cKDTree
+          from concurrent.futures import ThreadPoolExecutor, as_completed
 
-          # گام شبکه برای کل ایران (۰.۲۵ درجه ~ ۲۵ کیلومتر جهت اجرای سریع و پایدار)
           GRID_STEP = 0.25
-          BBOX = [44.0, 25.0, 63.5, 40.0]  # کل ایران: min_lon, min_lat, max_lon, max_lat
+          BBOX = [44.0, 25.0, 63.5, 40.0]
           WMS_URL = "https://maps.effis.emergency.copernicus.eu/gwis"
 
-          # بارگذاری مرز ایران از IRAN.geojson
+          # تبدیل مختصات جغرافیایی (EPSG:4326) به مرکاتور (EPSG:3857)
+          transformer_to_3857 = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True).transform
+
+          def lonlat_to_mercator(lon, lat):
+              return transformer_to_3857(lon, lat)
+
+          # بارگذاری مرز دقیق کشور ایران
           iran_geom = None
           geojson_path = "IRAN.geojson"
           if os.path.exists(geojson_path):
               try:
                   gdf = gpd.read_file(geojson_path)
                   iran_geom = gdf.unary_union
-                  print("Loaded IRAN.geojson successfully.")
+                  print(f"Loaded {geojson_path} successfully.")
               except Exception as e:
                   print(f"Error loading {geojson_path}: {e}")
 
-          if iran_geom is None:
-              print("Fallback: Using bounding box for Iran.")
+          if iran_geom is None or iran_geom.is_empty:
+              print("Fallback: Using Iran BBOX.")
               iran_geom = box(BBOX[0], BBOX[1], BBOX[2], BBOX[3])
 
-          # تولید شبکه نقاط داخل مرز ایران
+          # ایجاد شبکه نقاط درون خاک ایران
           lons = np.arange(BBOX[0], BBOX[2] + GRID_STEP, GRID_STEP)
           lats = np.arange(BBOX[1], BBOX[3] + GRID_STEP, GRID_STEP)
           target_points = []
@@ -64,20 +76,18 @@ jobs:
               for lon in lons:
                   p = Point(lon, lat)
                   if iran_geom.contains(p):
-                      target_points.append((round(lon, 4), round(lat, 4)))
+                      target_points.append((round(float(lon), 4), round(float(lat), 4)))
 
-          print(f"Total target points inside Iran: {len(target_points)}")
+          print(f"Total target points in Iran: {len(target_points)}")
 
           today_str = datetime.date.today().strftime("%Y-%m-%d")
-          session = requests.Session()
-          session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
 
-          fetched_data = []
-          missing_points = []
+          def fetch_single_point(coords):
+              lon, lat = coords
+              mx, my = lonlat_to_mercator(lon, lat)
+              delta = 2500  # فاصله در سیستم EPSG:3857 (متر)
+              bbox_str = f"{mx - delta},{my - delta},{mx + delta},{my + delta}"
 
-          for lon, lat in target_points:
-              delta = 0.02
-              bbox_str = f"{lon - delta},{lat - delta},{lon + delta},{lat + delta}"
               params = {
                   "SERVICE": "WMS",
                   "VERSION": "1.1.1",
@@ -89,35 +99,100 @@ jobs:
                   "HEIGHT": "101",
                   "X": "50",
                   "Y": "50",
-                  "SRS": "EPSG:4326",
+                  "SRS": "EPSG:3857",
                   "INFO_FORMAT": "text/html",
                   "TIME": today_str
               }
+
+              headers = {
+                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+              }
+
               val = None
               try:
-                  res = session.get(WMS_URL, params=params, timeout=7)
-                  if res.status_code == 200 and "fwi" in res.text.lower():
-                      soup = BeautifulSoup(res.text, "lxml")
-                      for cell in soup.find_all(["td", "th", "span"]):
-                          text = cell.get_text().strip()
-                          try:
-                              flt = float(text)
-                              if 0 <= flt <= 150:
-                                  val = flt
-                                  break
-                          except ValueError:
-                              continue
+                  resp = requests.get(WMS_URL, params=params, headers=headers, timeout=10)
+                  if resp.status_code == 200 and "fwi" in resp.text.lower():
+                      soup = BeautifulSoup(resp.text, "lxml")
+                      # جستجو برای پیدا کردن سلول مقدار FWI در جدول
+                      cells = soup.find_all(["td", "th"])
+                      for i, c in enumerate(cells):
+                          if "fwi" in c.get_text().lower() and i + 1 < len(cells):
+                              txt = cells[i + 1].get_text().strip()
+                              try:
+                                  flt = float(txt)
+                                  if 0 <= flt <= 150:
+                                      val = flt
+                                      break
+                              except ValueError:
+                                  pass
+                      if val is None:
+                          for c in cells:
+                              txt = c.get_text().strip()
+                              try:
+                                  flt = float(txt)
+                                  if 0 <= flt <= 150:
+                                      val = flt
+                                      break
+                              except ValueError:
+                                  pass
               except Exception:
                   pass
 
-              if val is not None:
-                  fetched_data.append({"lon": lon, "lat": lat, "fwi": round(val, 2), "interpolated": False})
-              else:
-                  missing_points.append((lon, lat))
+              return lon, lat, val
 
-          print(f"Directly fetched: {len(fetched_data)}, Missing for IDW: {len(missing_points)}")
+          fetched_data = []
+          missing_points = []
 
-          # درون‌یابی نقاط فاقد داده با روش IDW
+          # اجرای همزمان با ۱۰ ترد موازی جهت سرعت بالا و جلوگیری از بلاک شدن
+          with ThreadPoolExecutor(max_workers=10) as executor:
+              futures = [executor.submit(fetch_single_point, pt) for pt in target_points]
+              for future in as_completed(futures):
+                  lon, lat, val = future.result()
+                  if val is not None:
+                      fetched_data.append({
+                          "lon": lon,
+                          "lat": lat,
+                          "fwi": round(float(val), 2),
+                          "interpolated": False
+                      })
+                  else:
+                      missing_points.append((lon, lat))
+
+          print(f"Direct points fetched: {len(fetched_data)}")()
+                              try:
+                                  flt = float(txt)
+                                  if 0 <= flt <= 150:
+                                      val = flt
+                                      break
+                              except ValueError:
+                                  pass
+              except Exception:
+                  pass
+
+              return lon, lat, val
+
+          fetched_data = []
+          missing_points = []
+
+          # اجرای همزمان با ۱۰ ترد موازی جهت سرعت بالا و جلوگیری از بلاک شدن
+          with ThreadPoolExecutor(max_workers=10) as executor:
+              futures = [executor.submit(fetch_single_point, pt) for pt in target_points]
+              for future in as_completed(futures):
+                  lon, lat, val = future.result()
+                  if val is not None:
+                      fetched_data.append({
+                          "lon": lon,
+                          "lat": lat,
+                          "fwi": round(float(val), 2),
+                          "interpolated": False
+                      })
+                  else:
+                      missing_points.append((lon, lat))
+
+          print(f"Direct points fetched: {len(fetched_data)}")
+          print(f"Missing points: {len(missing_points)}")
+
+          # درون‌یابی مکانی (IDW) برای نقاطی که ماهواره داده نداده
           if fetched_data and missing_points:
               known_coords = np.array([[p["lon"], p["lat"]] for p in fetched_data])
               known_vals = np.array([p["fwi"] for p in fetched_data])
@@ -126,33 +201,12 @@ jobs:
               for lon, lat in missing_points:
                   k = min(8, len(known_coords))
                   distances, indices = tree.query([lon, lat], k=k)
-                  
+
                   if np.any(distances < 1e-5):
                       interp_val = known_vals[indices[np.argmin(distances)]]
                   else:
                       weights = 1.0 / (distances ** 2)
-                      interp_val = np.sum(weights * known_vals[indices]) / np.sum(weights)
-
-                  fetched_data.append({
-                      "lon": lon,
-                      "lat": lat,
-                      "fwi": round(float(interp_val), 2),
-                      "interpolated": True
-                  })
-
-          all_fwi = [p["fwi"] for p in fetched_data] if fetched_data else [0]
-          
-          # محاسبه تاریخ شمسی تقریبی
-          today = datetime.date.today()
-          output_data = {
-              "forecast_date": today_str,
-              "forecast_shamsi": f"{today.year}/{today.month:02d}/{today.day:02d}",
-              "statistics": {
-                  "count": len(fetched_data),
-                  "mean": round(float(np.mean(all_fwi)), 2),
-                  "max": round(float(np.max(all_fwi)), 2),
-                  "min": round(float(np.min(all_fwi)), 2)
-              },
+                      interp_              },
               "points": fetched_data
           }
 
@@ -160,7 +214,7 @@ jobs:
           with open("data/fwi_fars.json", "w", encoding="utf-8") as f:
               json.dump(output_data, f, ensure_ascii=False, indent=2)
 
-          print("data/fwi_fars.json saved successfully.")
+          print("Successfully written data/fwi_fars.json with", len(fetched_data), "points.")
           EOF
 
       - name: Commit and Push Data
