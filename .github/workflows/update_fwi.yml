@@ -101,7 +101,7 @@ jobs:
               if not text or "ServiceException" in text:
                   return None
 
-              # 1. جستجو در قالب جدول HTML
+              # 1. جستجو در تگ‌های HTML
               try:
                   soup = BeautifulSoup(text, "html.parser")
                   for row in soup.find_all("tr"):
@@ -118,27 +118,21 @@ jobs:
               except Exception:
                   pass
 
-              # 2. جستجو در قالب XML / GML
-              try:
-                  soup_xml = BeautifulSoup(text, "xml")
-                  # بررسی فیلدهای اختصاصی یا متداول GWIS
-                  for tag in soup_xml.find_all(re.compile(r"(fwi|value|gray_index|band_1|grid_value)", re.I)):
-                      val_str = tag.get_text(strip=True)
-                      try:
-                          val = float(val_str)
-                          if 0 <= val <= 250:
-                              return round(val, 3)
-                      except ValueError:
-                          continue
-              except Exception:
-                  pass
-
-              # 3. جستجوی الگوهای عددی کلیدی در کل متن خام
+              # 2. جستجو در تگ‌های متنی و عددی
               matches = re.findall(r"(?:fwi|fire[_\s]weather[_\s]index)[^\d]{1,20}([-+]?\d+(?:\.\d+)?)", text, re.I)
               for m in matches:
                   try:
                       val = float(m)
                       if 0 <= val <= 250:
+                          return round(val, 3)
+                  except ValueError:
+                      pass
+
+              # 3. پیدا کردن اولین عدد اعشاری منطقی در صورت ساده بودن خروجی
+              for num in re.findall(r"[-+]?\d*\.?\d+", text):
+                  try:
+                      val = float(num)
+                      if 0.1 <= val <= 200:
                           return round(val, 3)
                   except ValueError:
                       pass
@@ -150,42 +144,38 @@ jobs:
           session.mount("https://", adapter)
           session.headers.update({"User-Agent": "Mozilla/5.0 (FARS-FWI/1.0)"})
 
-          # ابتدا یک درخواست آزمایشی برای دیدن نوع پاسخ سرور ارسال می‌کنیم
-          test_x, test_y = lonlat_to_3857(52.58, 29.62) # مرکز حدودی شیراز
-          test_bbox = f"{test_x - HALF_SIZE_METERS},{test_y - HALF_SIZE_METERS},{test_x + HALF_SIZE_METERS},{test_y + HALF_SIZE_METERS}"
-          test_params = {
-              "SERVICE": "WMS", "VERSION": "1.1.1", "REQUEST": "GetFeatureInfo",
-              "LAYERS": LAYER, "QUERY_LAYERS": QUERY_LAYER, "SRS": "EPSG:3857",
-              "BBOX": test_bbox, "WIDTH": str(POINT_WIDTH), "HEIGHT": str(POINT_HEIGHT),
-              "X": "50", "Y": "50", "INFO_FORMAT": "text/html", "FEATURE_COUNT": "1",
-              "FORMAT": "image/png", "TRANSPARENT": "TRUE", "TIME": target_date
-          }
+          def get_wms_params(lon, lat):
+              x, y = lonlat_to_3857(lon, lat)
+              bbox = f"{x - HALF_SIZE_METERS},{y - HALF_SIZE_METERS},{x + HALF_SIZE_METERS},{y + HALF_SIZE_METERS}"
+              return {
+                  "SERVICE": "WMS",
+                  "VERSION": "1.1.1",
+                  "REQUEST": "GetFeatureInfo",
+                  "LAYERS": LAYER,
+                  "QUERY_LAYERS": QUERY_LAYER,
+                  "STYLES": "",
+                  "SRS": "EPSG:3857",
+                  "BBOX": bbox,
+                  "WIDTH": str(POINT_WIDTH),
+                  "HEIGHT": str(POINT_HEIGHT),
+                  "X": "50",
+                  "Y": "50",
+                  "INFO_FORMAT": "text/html",
+                  "FEATURE_COUNT": "1",
+                  "FORMAT": "image/png",
+                  "TRANSPARENT": "TRUE",
+                  "TIME": target_date
+              }
+
+          # تست اتصال به سرور با پارامتر STYLES اضافه شده
+          test_params = get_wms_params(52.58, 29.62)
           res_test = session.get(WMS_URL, params=test_params, timeout=15)
           print(f"Sample Server Response Code: {res_test.status_code}")
-          print("Sample Server Snippet:", res_test.text[:250].replace("\n", " "))
-
-          # در صورتی که text/html خالی بود، فرمت xml را تست می‌کنیم
-          use_xml_format = False
-          if parse_fwi_response(res_test.text) is None:
-              test_params["INFO_FORMAT"] = "application/vnd.ogc.gml"
-              res_test_gml = session.get(WMS_URL, params=test_params, timeout=15)
-              if parse_fwi_response(res_test_gml.text) is not None or "<gml:" in res_test_gml.text:
-                  use_xml_format = True
-                  print("Switched INFO_FORMAT to application/vnd.ogc.gml")
-
-          selected_info_format = "application/vnd.ogc.gml" if use_xml_format else "text/html"
+          print("Sample Server Response Preview:\n", res_test.text[:300])
 
           def fetch_point(pt):
               lon, lat = pt
-              x, y = lonlat_to_3857(lon, lat)
-              bbox = f"{x - HALF_SIZE_METERS},{y - HALF_SIZE_METERS},{x + HALF_SIZE_METERS},{y + HALF_SIZE_METERS}"
-              params = {
-                  "SERVICE": "WMS", "VERSION": "1.1.1", "REQUEST": "GetFeatureInfo",
-                  "LAYERS": LAYER, "QUERY_LAYERS": QUERY_LAYER, "SRS": "EPSG:3857",
-                  "BBOX": bbox, "WIDTH": str(POINT_WIDTH), "HEIGHT": str(POINT_HEIGHT),
-                  "X": "50", "Y": "50", "INFO_FORMAT": selected_info_format, "FEATURE_COUNT": "1",
-                  "FORMAT": "image/png", "TRANSPARENT": "TRUE", "TIME": target_date
-              }
+              params = get_wms_params(lon, lat)
               try:
                   r = session.get(WMS_URL, params=params, timeout=10)
                   if r.status_code == 200:
@@ -241,8 +231,8 @@ jobs:
           print(f"Fetch completed: {len(known_values)} valid, {len(missing_points)} missing.")
 
           if not known_values:
-              print("No valid values extracted directly. Sample full response was:")
-              print(res_test.text[:500])
+              print("No valid values extracted. Raw test response:")
+              print(res_test.text)
               raise RuntimeError("Could not parse FWI numeric values from response.")
 
           results = [{"lat": lat, "lon": lon, "fwi": val, "interpolated": False}
