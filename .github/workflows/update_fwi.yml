@@ -85,6 +85,8 @@ jobs:
           jy, jm, jd = gregorian_to_jalali(target.year, target.month, target.day)
           shamsi_date = f"{jy:04d}-{jm:02d}-{jd:02d}"
 
+          print("Target Forecast Date:", target_date, "(Shamsi:", shamsi_date, ")")
+
           def lonlat_to_3857(lon, lat):
               x = lon * 20037508.34 / 180.0
               y = math.log(math.tan(math.radians(lat) / 2.0 + math.pi / 4.0)) * 20037508.34 / math.pi
@@ -108,7 +110,7 @@ jobs:
                       continue
               return None
 
-          session = GAPGPTMASKTOKENdm7rxadfcjkX0X
+          session = requests.Session()
           session.headers.update({"User-Agent": "FARS-FWI/1.0"})
 
           def get_fwi(lon, lat):
@@ -127,6 +129,7 @@ jobs:
               except Exception:
                   return None
 
+          print("Reading fars.geojson...")
           fars = gpd.read_file("fars.geojson")
           if fars.crs is None:
               fars = fars.set_crs("EPSG:4326")
@@ -149,6 +152,8 @@ jobs:
                   lon += GRID_STEP
               lat += GRID_STEP
 
+          print(f"Total points in Fars boundary: {len(points)}")
+
           known_coords, known_values, missing_points = [], [], []
           total = len(points)
           for idx, (lon, lat) in enumerate(points, 1):
@@ -159,6 +164,8 @@ jobs:
               else:
                   missing_points.append((lon, lat))
 
+          print(f"Fetched: {len(known_values)} valid, {len(missing_points)} missing")
+
           if not known_values:
               raise RuntimeError("No numeric FWI values returned from EFFIS server.")
 
@@ -166,6 +173,7 @@ jobs:
                      for (lon, lat), val in zip(known_coords, known_values)]
 
           if missing_points:
+              print(f"Interpolating {len(missing_points)} missing points with IDW...")
               tree = cKDTree(known_coords)
               k = min(8, len(known_coords))
               dists, idxs = tree.query(missing_points, k=k)
@@ -198,6 +206,8 @@ jobs:
           }
           with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
               json.dump(output, f, ensure_ascii=False, indent=2)
+
+          print("Data saved successfully to", OUTPUT_FILE)
           PY
           python request_fwi.py
 
