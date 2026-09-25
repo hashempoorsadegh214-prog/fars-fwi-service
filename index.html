@@ -107,7 +107,7 @@
       display: flex;
       flex-direction: column;
       gap: 8px;
-      min-width: 200px;
+      min-width: 220px;
       box-shadow: 0 6px 20px rgba(0,0,0,0.4);
     }
 
@@ -129,11 +129,12 @@
 
     .badge-count {
       font-size: 0.7rem;
-      background: rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.15);
       padding: 1px 6px;
       border-radius: 10px;
       margin-right: auto;
-      color: #94a3b8;
+      color: #38bdf8;
+      font-weight: bold;
     }
 
     /* راهنمای رنگ‌ها */
@@ -204,12 +205,12 @@
 </head>
 <body>
 
-  <div id="loading-indicator">در حال بارگذاری لایه‌ها و داده‌های پایش استان فارس...</div>
+  <div id="loading-indicator">در حال دریافت داده‌های ۴,۲۹۷ نقطه پایش استان فارس...</div>
 
   <div class="dashboard-header">
     <div class="title-box">
       <h1>🔥 سامانه پایش شاخص خطر آتش‌سوزی (FWI) استان فارس</h1>
-      <p>تفکیک ایستگاه‌های مستقیم ماهواره‌ای و درون‌یابی محاسباتی (Copernicus / GWIS)</p>
+      <p>تفکیک ایستگاه‌های مستقیم ماهواره‌ای و درون‌یابی محاسباتی (GWIS / Copernicus)</p>
     </div>
     <div class="stats-box">
       <div class="stat-badge">
@@ -233,10 +234,10 @@
 
   <!-- پنل تفکیک لایه‌ها -->
   <div class="layer-control-card">
-    <div class="layer-control-title">مدیریت نمایش لایه‌ها</div>
+    <div class="layer-control-title">مدیریت لایه‌ها</div>
     <label>
       <input type="checkbox" id="toggle-direct" checked>
-      <span>نقاط مستقیم (GWIS)</span>
+      <span>نقاط دیدبانی مستقیم (GWIS)</span>
       <span class="badge-count" id="count-direct">۰</span>
     </label>
     <label>
@@ -246,7 +247,7 @@
     </label>
     <label>
       <input type="checkbox" id="toggle-heat">
-      <span>لایه پهنه‌ای (هیت‌مپ)</span>
+      <span>لایه پهنه‌ای (هیت‌مپ پیوسته)</span>
     </label>
   </div>
 
@@ -277,7 +278,7 @@
     }
 
     function getFwiFaLevel(val) {
-      if (val >= 50.0) return "بحرانی / خطر بسیار حاد";
+      if (val >= 50.0) return "بحرانی / مفرط";
       if (val >= 38.0) return "بسیار زیاد";
       if (val >= 21.3) return "زیاد";
       if (val >= 11.2) return "متوسط";
@@ -285,10 +286,11 @@
       return "بسیار کم";
     }
 
+    // مرکزدهی اولیه روی استان فارس
     const map = L.map('map', {
-      center: [29.0, 53.3],
+      center: [28.8, 53.5],
       zoom: 7,
-      minZoom: 6,
+      minZoom: 5,
       zoomControl: false
     });
 
@@ -299,7 +301,6 @@
       maxZoom: 18
     }).addTo(map);
 
-    // گروه‌های لایه مجزا
     const directPointsLayer = L.layerGroup().addTo(map);
     const interpPointsLayer = L.layerGroup().addTo(map);
     let heatLayer = null;
@@ -308,7 +309,7 @@
       const loader = document.getElementById('loading-indicator');
       try {
         const response = await fetch('data/fwi_fars.json?v=' + Date.now());
-        if (!response.ok) throw new Error('خطا در دریافت داده: ' + response.status);
+        if (!response.ok) throw new Error('خطا در دریافت فایل داده: ' + response.status);
 
         const data = await response.json();
         const points = data.points || [];
@@ -318,31 +319,28 @@
         const heatData = [];
         let directCount = 0;
         let interpCount = 0;
-        const bounds = [];
+        const allCoords = [];
 
         points.forEach(p => {
-          const lat = p.lat;
-          const lon = p.lon;
+          const lat = parseFloat(p.lat);
+          const lon = parseFloat(p.lon);
           const fwi = parseFloat(p.fwi);
           const isInterp = (p.interpolated === true);
 
-          bounds.push([lat, lon]);
+          allCoords.push([lat, lon]);
 
-          // برای هیت مپ
           const intensity = Math.min(1.0, Math.max(0.1, fwi / 70.0));
           heatData.push([lat, lon, intensity]);
 
           if (isInterp) {
             interpCount++;
-            // نقاط درون‌یابی شده: حاشیه خط‌چین با نقطه متمایز
             const marker = L.circleMarker([lat, lon], {
-              radius: 4,
+              radius: 3.5,
               fillColor: getFwiColor(fwi),
               color: '#ffffff',
               weight: 1,
               dashArray: '2, 2',
-              opacity: 0.9,
-              fillOpacity: 0.85
+              fillOpacity: 0.9
             });
 
             marker.bindPopup(`
@@ -350,39 +348,37 @@
                 <strong style="color: #fbbf24;">نقطه محاسباتی (درون‌یابی IDW)</strong><br>
                 مختصات: ${lat.toFixed(3)}°N , ${lon.toFixed(3)}°E<br>
                 شاخص FWI: <b style="color:${getFwiColor(fwi)}">${fwi.toFixed(1)}</b><br>
-                وضعیت: <b>${getFwiFaLevel(fwi)}</b>
+                طبقه خطر: <b>${getFwiFaLevel(fwi)}</b>
               </div>
             `);
             interpPointsLayer.addLayer(marker);
 
           } else {
             directCount++;
-            // نقاط مستقیم GWIS
             const marker = L.circleMarker([lat, lon], {
               radius: 3.5,
               fillColor: getFwiColor(fwi),
               color: '#0f172a',
               weight: 0.5,
-              opacity: 0.85,
               fillOpacity: 0.85
             });
 
             marker.bindPopup(`
               <div style="direction: rtl; text-align: right; font-size: 0.8rem; line-height: 1.6;">
-                <strong style="color: #38bdf8;">نقطه ماهواره‌ای مستقیم (GWIS)</strong><br>
+                <strong style="color: #38bdf8;">نقطه دیدبانی مستقیم (GWIS)</strong><br>
                 مختصات: ${lat.toFixed(3)}°N , ${lon.toFixed(3)}°E<br>
                 شاخص FWI: <b style="color:${getFwiColor(fwi)}">${fwi.toFixed(1)}</b><br>
-                وضعیت: <b>${getFwiFaLevel(fwi)}</b>
+                طبقه خطر: <b>${getFwiFaLevel(fwi)}</b>
               </div>
             `);
             directPointsLayer.addLayer(marker);
           }
         });
 
-        // ساخت هیت‌مپ با شفافیت مناسب
+        // لایه هیت‌مپ
         heatLayer = L.heatLayer(heatData, {
-          radius: 16,
-          blur: 14,
+          radius: 14,
+          blur: 12,
           maxZoom: 10,
           max: 1.0,
           gradient: {
@@ -395,12 +391,12 @@
           }
         });
 
-        // هماهنگ‌سازی کادر نقشه با تمام نقاط استان (پوشش کامل جنوب شرق و شمال)
-        if (bounds.length > 0) {
-          map.fitBounds(bounds, { padding: [30, 30] });
+        // زوم خودکار دقیق برای جا گرفتن تمام استان (شمال تا جنوب شرق)
+        if (allCoords.length > 0) {
+          map.fitBounds(allCoords, { padding: [40, 40] });
         }
 
-        // بروزرسانی شمارنده‌ها و آمار
+        // بروزرسانی آمار
         document.getElementById('stat-points').innerText = points.length.toLocaleString('fa-IR');
         document.getElementById('count-direct').innerText = directCount.toLocaleString('fa-IR');
         document.getElementById('count-interp').innerText = interpCount.toLocaleString('fa-IR');
@@ -424,7 +420,7 @@
       }
     }
 
-    // کنترل تیک‌ها
+    // لیسنرهای کنترل تیک‌ها
     document.getElementById('toggle-direct').addEventListener('change', function(e) {
       if (e.target.checked) map.addLayer(directPointsLayer);
       else map.removeLayer(directPointsLayer);
