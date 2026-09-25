@@ -26,7 +26,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install requests beautifulsoup4 geopandas shapely pandas xlsxwriter scipy numpy
 
-      - name: Fetch and Interpolate FWI
+      - name: Fetch and Interpolate FWI (Fast Parallel)
         run: |
           mkdir -p data
           cat > request_fwi.py <<'PY'
@@ -35,6 +35,7 @@ jobs:
           import requests
           import numpy as np
           import geopandas as gpd
+          from concurrent.futures import ThreadPoolExecutor, as_completed
           from scipy.spatial import cKDTree
           from bs4 import BeautifulSoup
           from shapely.geometry import Point
@@ -49,6 +50,7 @@ jobs:
           POINT_HEIGHT = 101
           HALF_SIZE_METERS = 12000
           OUTPUT_FILE = "data/fwi_fars.json"
+          MAX_WORKERS = 20
 
           IRAN_TZ = timezone(timedelta(hours=3, minutes=30))
           now = datetime.now(IRAN_TZ)
@@ -84,8 +86,7 @@ jobs:
 
           jy, jm, jd = gregorian_to_jalali(target.year, target.month, target.day)
           shamsi_date = f"{jy:04d}-{jm:02d}-{jd:02d}"
-
-          print("Target Forecast Date:", target_date, "(Shamsi:", shamsi_date, ")")
+          print(f"Target Forecast Date: {target_date} (Shamsi: {shamsi_date})")
 
           def lonlat_to_3857(lon, lat):
               x = lon * 20037508.34 / 180.0
@@ -93,27 +94,29 @@ jobs:
               return x, y
 
           def parse_fwi(html):
-              soup = BeautifulSoup(html, "html.parser")
-              for row in soup.find_all("tr"):
-                  cells = row.find_all("td")
-                  if len(cells) < 2:
-                      continue
-                  label = cells[0].get_text(" ", strip=True).lower()
-                  value_text = cells[1].get_text(" ", strip=True)
-                  if "fire weather index" not in label:
-                      continue
-                  try:
-                      val = float(value_text)
-                      if math.isfinite(val) and 0 <= val <= 200:
-                          return round(val, 3)
-                  except ValueError:
-                      continue
+              try:
+                  soup = BeautifulSoup(html, "html.parser")
+                  for row in soup.find_all("tr"):
+                      cells = row.find_all("td")
+                      if len(cells) < 2:
+                          continue
+                      label = cells[0].get_text(" ", strip=True).lower()
+                      value_text = cells[1].get_text(" ", strip=True)
+                      if "fire weather index" in label:
+                          val = float(value_text)
+                          if math.isfinite(val) and 0 <= val <= 200:
+                              return round(val, 3)
+              except Exception:
+                  pass
               return None
 
           session = requests.Session()
+          adapter = requests.adapters.HTTPAdapter(pool_connections=MAX_WORKERS, pool_maxsize=MAX_WORKERS, max_retries=2)
+          session.mount("https://", adapter)
           session.headers.update({"User-Agent": "FARS-FWI/1.0"})
 
-          def get_fwi(lon, lat):
+          def fetch_point(pt):
+              lon, lat = pt
               x, y = lonlat_to_3857(lon, lat)
               bbox = f"{x - HALF_SIZE_METERS},{y - HALF_SIZE_METERS},{x + HALF_SIZE_METERS},{y + HALF_SIZE_METERS}"
               params = {
@@ -124,10 +127,13 @@ jobs:
                   "FORMAT": "image/png", "TRANSPARENT": "TRUE", "TIME": target_date
               }
               try:
-                  res = session.get(WMS_URL, params=params, timeout=30)
-                  return parse_fwi(res.text) if res.status_code == 200 else None
+                  res = session.get(WMS_URL, params=params, timeout=10)
+                  if res.status_code == 200:
+                      val = parse_fwi(res.text)
+                      return (lon, lat, val)
               except Exception:
-                  return None
+                  pass
+              return (lon, lat, None)
 
           print("Reading fars.geojson...")
           fars = gpd.read_file("fars.geojson")
@@ -152,19 +158,27 @@ jobs:
                   lon += GRID_STEP
               lat += GRID_STEP
 
-          print(f"Total points in Fars boundary: {len(points)}")
+          total = len(points)
+          print(f"Total points inside Fars: {total}")
+          print(f"Fetching data in parallel ({MAX_WORKERS} threads)...")
 
           known_coords, known_values, missing_points = [], [], []
-          total = len(points)
-          for idx, (lon, lat) in enumerate(points, 1):
-              val = get_fwi(lon, lat)
-              if val is not None:
-                  known_coords.append((lon, lat))
-                  known_values.append(val)
-              else:
-                  missing_points.append((lon, lat))
+          done = 0
 
-          print(f"Fetched: {len(known_values)} valid, {len(missing_points)} missing")
+          with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+              futures = [executor.submit(fetch_point, pt) for pt in points]
+              for future in as_completed(futures):
+                  lon, lat, val = future.result()
+                  done += 1
+                  if done % 500 == 0 or done == total:
+                      print(f"Progress: {done}/{total} points processed...")
+                  if val is not None:
+                      known_coords.append((lon, lat))
+                      known_values.append(val)
+                  else:
+                      missing_points.append((lon, lat))
+
+          print(f"Fetch completed: {len(known_values)} valid, {len(missing_points)} missing.")
 
           if not known_values:
               raise RuntimeError("No numeric FWI values returned from EFFIS server.")
@@ -173,7 +187,7 @@ jobs:
                      for (lon, lat), val in zip(known_coords, known_values)]
 
           if missing_points:
-              print(f"Interpolating {len(missing_points)} missing points with IDW...")
+              print(f"Interpolating {len(missing_points)} missing points via IDW...")
               tree = cKDTree(known_coords)
               k = min(8, len(known_coords))
               dists, idxs = tree.query(missing_points, k=k)
@@ -207,7 +221,7 @@ jobs:
           with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
               json.dump(output, f, ensure_ascii=False, indent=2)
 
-          print("Data saved successfully to", OUTPUT_FILE)
+          print(f"Success! Data saved to {OUTPUT_FILE} ({len(results)} total points).")
           PY
           python request_fwi.py
 
